@@ -7,6 +7,7 @@ import UniformTypeIdentifiers
 @MainActor
 final class CueXModel {
     private(set) var project: ImportedLogicProject?
+    private(set) var setlistDurations: SetlistDurations?
     private(set) var sectionNotes: [String: String] = [:]
     private(set) var stopAfterSongIDs: Set<String> = []
     private(set) var setlistURL: URL?
@@ -46,6 +47,14 @@ final class CueXModel {
             playlistAutomation.updateOptions(updated)
             errorMessage = nil
         } catch { errorMessage = error.localizedDescription }
+    }
+
+    func songDurationLabel(for section: ArrangementSection) -> String {
+        ClockDurationFormatter.minutesAndSeconds(setlistDurations?.songSeconds[section.id])
+    }
+
+    var setlistDurationLabel: String {
+        ClockDurationFormatter.minutesAndSeconds(setlistDurations?.totalSeconds)
     }
 
     var activeSection: ArrangementSection? {
@@ -127,6 +136,7 @@ final class CueXModel {
         }
         reloadedSectionIDs = replacements
         project = restored
+        setlistDurations = SetlistDurations(project: restored)
         sectionNotes = notes
         stopAfterSongIDs = stops
         playlistAutomation.configure(project: restored, savedIDs: stops)
@@ -227,6 +237,7 @@ final class CueXModel {
         do {
             try notesStore.saveSectionOrder(updated.sections.map(\.id), for: updated.projectURL)
             project = updated
+            setlistDurations = SetlistDurations(project: updated)
             hasUnsavedSetlistChanges = true
             playlistAutomation.configure(project: updated, savedIDs: stopAfterSongIDs)
             errorMessage = nil
@@ -353,6 +364,7 @@ final class CueXModel {
                 order: document.sectionOrder, for: linkedURL)
             reloadedSectionIDs = [:]
             project = restored
+            setlistDurations = SetlistDurations(project: restored)
             sectionNotes = document.notes
             stopAfterSongIDs = stops
             setlistURL = url

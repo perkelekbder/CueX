@@ -63,6 +63,12 @@ Drag a song row to its new position while playback is stopped. Reordering preser
 
 Unchecked songs continue naturally when the next setlist song starts exactly at the current song’s end in Logic. Otherwise CueX stops at the boundary, waits for stopped feedback, locates the next song, and resumes only after fresh position feedback confirms that song. These jumps can introduce a brief gap; they are not gapless transitions. A failed locate or a missing position confirmation leaves playback stopped. CueX’s Stop button cancels a pending automatic restart.
 
+## Song and setlist duration
+
+Each song row shows its duration in minutes and seconds. The footer shows **Setlist length**, the sum of the songs in CueX. Durations integrate the saved tempo changes across each song’s start and end ticks. They refresh when the project is imported or reloaded after a Logic save.
+
+The total excludes gaps in Logic’s timeline, time waiting at programmed stops, and the brief delays of MIDI-controlled jumps. Songs are summed before rounding the total to the nearest second; row durations are also rounded to the nearest second. Durations longer than an hour continue counting minutes, for example `75:30`. If a song has no usable tempo map, its duration and the total show `—` instead of assuming a tempo or showing a partial total.
+
 ## Detect saves in Logic
 
 CueX monitors the linked project’s saved `ProjectData` and frame-rate metadata, including when a setlist was opened from a file. It polls every half second and waits for a stable snapshot before reloading. Display-state updates and backup files do not trigger reloads.
