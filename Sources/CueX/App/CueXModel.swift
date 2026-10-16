@@ -15,6 +15,13 @@ final class CueXModel {
     private let recentSetlistsStore = RecentSetlistsStore()
     var errorMessage: String?
     var isImporting = false
+    private(set) var projectChangeNotice: String?
+    private(set) var reloadedSectionIDs: [String: String] = [:]
+    @ObservationIgnored private let saveMonitor = LogicProjectSaveMonitor()
+    @ObservationIgnored private var importedSnapshot: LogicProjectSaveSnapshot?
+    private var pendingSnapshot: LogicProjectSaveSnapshot?
+    @ObservationIgnored private var reloadFailures = 0
+    private var projectUnavailable = false
     private let notesStore = OperatorNotesStore()
     let midiController = LogicMIDIController()
     let playlistAutomation: PlaylistAutomation
@@ -75,29 +82,134 @@ final class CueXModel {
             isImporting = false
         }
         do {
-            var importedProject = try LogicProjectImporter.importProject(at: url)
-            let order = try notesStore.loadSectionOrder(for: url)
-            let imported = importedProject.sections
-            var seen = Set<String>()
-            importedProject.sections = order.compactMap { id in
-                guard seen.insert(id).inserted else { return nil }
-                return imported.first { $0.id == id }
-            } + imported.filter { !seen.contains($0.id) }
-            let notes = try notesStore.load(for: url)
-            let stops = try notesStore.loadStopAfterSongIDs(for: url)
-            let isReload = project?.projectURL.standardizedFileURL == url.standardizedFileURL
-            if !isReload {
-                setlistURL = nil
-                hasUnsavedSetlistChanges = false
-            } else if setlistURL != nil, project?.sections != importedProject.sections {
-                hasUnsavedSetlistChanges = true
+            let snapshot = try LogicProjectSaveSnapshot.capture(at: url)
+            let imported = try LogicProjectImporter.importProject(at: url)
+            try applyImportedProject(imported)
+            monitorProject(at: url, baseline: snapshot)
+            projectChangeNotice = nil
+        } catch { errorMessage = error.localizedDescription }
+    }
+
+    private func applyImportedProject(_ imported: ImportedLogicProject) throws {
+        let url = imported.projectURL
+        let isReload = project?.projectURL.standardizedFileURL == url.standardizedFileURL
+        var restored = imported
+        var notes: [String: String]
+        var stops: Set<String>
+        var replacements: [String: String] = [:]
+        if isReload, let previous = project {
+            let merge = ProjectReloadMerger.merge(previous: previous, imported: imported)
+            restored = merge.project
+            replacements = merge.sectionIDs
+            // Keep orphaned settings locally, in case removed songs are restored.
+            notes = sectionNotes
+            stops = stopAfterSongIDs
+            for (oldID, newID) in replacements where oldID != newID {
+                if let note = notes.removeValue(forKey: oldID) { notes[newID] = note }
+                if stops.remove(oldID) != nil { stops.insert(newID) }
             }
-            project = importedProject
-            sectionNotes = notes
-            stopAfterSongIDs = stops
-            playlistAutomation.configure(project: importedProject, savedIDs: stops)
-        } catch {
-            errorMessage = error.localizedDescription
+            try notesStore.saveConfiguration(notes: notes, stops: stops, order: restored.sections.map(\.id), for: url)
+        } else {
+            let order = try notesStore.loadSectionOrder(for: url)
+            var seen = Set<String>()
+            restored.sections = order.compactMap { id in
+                guard seen.insert(id).inserted else { return nil }
+                return imported.sections.first { $0.id == id }
+            } + imported.sections.filter { !seen.contains($0.id) }
+            notes = try notesStore.load(for: url)
+            stops = try notesStore.loadStopAfterSongIDs(for: url)
+        }
+        if !isReload {
+            setlistURL = nil
+            hasUnsavedSetlistChanges = false
+        } else if setlistURL != nil, project?.sections != restored.sections {
+            hasUnsavedSetlistChanges = true
+        }
+        reloadedSectionIDs = replacements
+        project = restored
+        sectionNotes = notes
+        stopAfterSongIDs = stops
+        playlistAutomation.configure(project: restored, savedIDs: stops)
+    }
+
+    private func monitorProject(at url: URL, baseline: LogicProjectSaveSnapshot) {
+        importedSnapshot = baseline
+        pendingSnapshot = nil
+        reloadFailures = 0
+        projectUnavailable = false
+        saveMonitor.watch(at: url, baseline: baseline) { [weak self] event in
+            guard let self, self.project?.projectURL.standardizedFileURL == url.standardizedFileURL else { return }
+            self.handleProjectSave(event, at: url)
+        }
+    }
+
+    private func handleProjectSave(_ event: LogicProjectSaveMonitor.Event, at url: URL) {
+        switch event {
+        case .unavailable:
+            projectUnavailable = true
+            projectChangeNotice = "Logic project unavailable · Keeping previous state"
+        case let .sample(snapshot, stable):
+            if projectUnavailable {
+                projectUnavailable = false
+                if pendingSnapshot != nil {
+                    projectChangeNotice = reloadFailures >= 3
+                        ? "Couldn’t reload project · Click to retry"
+                        : "Logic project changed · Reload pending"
+                } else {
+                    projectChangeNotice = nil
+                }
+            }
+            guard snapshot != importedSnapshot else {
+                if pendingSnapshot != nil {
+                    pendingSnapshot = nil
+                    reloadFailures = 0
+                    projectChangeNotice = "Logic project is up to date"
+                }
+                return
+            }
+            if snapshot != pendingSnapshot {
+                pendingSnapshot = snapshot
+                reloadFailures = 0
+                projectChangeNotice = canReorder ? "Logic project changed · Reloading…" : "Logic project changed · Reload after Stop"
+                // Show the notice before replacing any state, even for a save
+                // whose final files already matched the previous poll.
+                return
+            }
+            guard stable, canReorder, !isImporting, errorMessage == nil, reloadFailures < 3,
+                  NSApplication.shared.modalWindow == nil,
+                  !NSApplication.shared.windows.contains(where: { $0.attachedSheet != nil }) else { return }
+            isImporting = true
+            defer { isImporting = false }
+            do {
+                let imported = try LogicProjectImporter.importProject(at: url)
+                // Do not commit a mixture of files from two saves.
+                guard try LogicProjectSaveSnapshot.capture(at: url) == snapshot else { return }
+                try applyImportedProject(imported)
+                importedSnapshot = snapshot
+                pendingSnapshot = nil
+                reloadFailures = 0
+                projectChangeNotice = "Logic project saved · Reloaded"
+            } catch {
+                reloadFailures += 1
+                if reloadFailures == 3 {
+                    projectChangeNotice = "Couldn’t reload project · Click to retry"
+                }
+            }
+        }
+    }
+
+    var hasPendingProjectReload: Bool { pendingSnapshot != nil || projectUnavailable }
+
+    var canStartPlayback: Bool {
+        midiController.isReady && !playlistAutomation.isTransitioning && !hasPendingProjectReload
+    }
+
+    func handleProjectChangeNotice() {
+        if hasPendingProjectReload {
+            guard canReorder, let project else { return }
+            importProject(at: project.projectURL)
+        } else {
+            projectChangeNotice = nil
         }
     }
 
@@ -205,12 +317,15 @@ final class CueXModel {
             let nearby = url.deletingLastPathComponent().appendingPathComponent(document.logicProjectName)
             let original = URL(fileURLWithPath: document.logicProjectPath)
             var restoredProject: ImportedLogicProject?
+            var restoredSnapshot: LogicProjectSaveSnapshot?
             for candidate in [nearby, original] where FileManager.default.fileExists(atPath: candidate.path) {
                 let scope = candidate.startAccessingSecurityScopedResource()
                 defer { if scope { candidate.stopAccessingSecurityScopedResource() } }
-                if let imported = try? LogicProjectImporter.importProject(at: candidate),
+                if let snapshot = try? LogicProjectSaveSnapshot.capture(at: candidate),
+                   let imported = try? LogicProjectImporter.importProject(at: candidate),
                    let matching = try? document.applying(to: imported) {
                     restoredProject = matching
+                    restoredSnapshot = snapshot
                     break
                 }
             }
@@ -224,9 +339,10 @@ final class CueXModel {
                 guard relink.runModal() == .OK, let selected = relink.url else { return }
                 let scope = selected.startAccessingSecurityScopedResource()
                 defer { if scope { selected.stopAccessingSecurityScopedResource() } }
+                restoredSnapshot = try LogicProjectSaveSnapshot.capture(at: selected)
                 restoredProject = try document.applying(to: LogicProjectImporter.importProject(at: selected))
             }
-            guard let restored = restoredProject else { return }
+            guard let restored = restoredProject, let restoredSnapshot else { return }
             guard canReorder else {
                 errorMessage = "Stop Logic playback before opening a setlist."
                 return
@@ -235,6 +351,7 @@ final class CueXModel {
             let stops = Set(document.stopAfterSongIDs)
             try notesStore.saveConfiguration(notes: document.notes, stops: stops,
                 order: document.sectionOrder, for: linkedURL)
+            reloadedSectionIDs = [:]
             project = restored
             sectionNotes = document.notes
             stopAfterSongIDs = stops
@@ -242,6 +359,8 @@ final class CueXModel {
             rememberSetlist(url)
             hasUnsavedSetlistChanges = linkedURL.standardizedFileURL.path != document.logicProjectPath
             playlistAutomation.configure(project: restored, savedIDs: stops)
+            monitorProject(at: linkedURL, baseline: restoredSnapshot)
+            projectChangeNotice = nil
             errorMessage = nil
         } catch { errorMessage = error.localizedDescription }
     }

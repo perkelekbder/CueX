@@ -63,6 +63,14 @@ Drag a song row to its new position while playback is stopped. Reordering preser
 
 Unchecked songs continue naturally when the next setlist song starts exactly at the current song’s end in Logic. Otherwise CueX stops at the boundary, waits for stopped feedback, locates the next song, and resumes only after fresh position feedback confirms that song. These jumps can introduce a brief gap; they are not gapless transitions. A failed locate or a missing position confirmation leaves playback stopped. CueX’s Stop button cancels a pending automatic restart.
 
+## Detect saves in Logic
+
+CueX monitors the linked project’s saved `ProjectData` and frame-rate metadata, including when a setlist was opened from a file. It polls every half second and waits for a stable snapshot before reloading. Display-state updates and backup files do not trigger reloads.
+
+After Logic saves, a warning appears in the footer before CueX reloads the project. During playback or an automatic transition, the warning stays visible and reloading waits until playback stops. Starting playback is disabled while a reload is pending; Stop remains available. After reloading, click the footer notice to dismiss it. If the project is temporarily unavailable or cannot be read, CueX keeps the previous imported state and offers retry from the footer.
+
+Reloading preserves CueX order, notes, stop settings, and selection for matching songs. Exact section matches are kept first; moved songs can match by unique name, and renamed songs by an unambiguous start position. Unmatched new songs are appended in Logic timeline order, and removed songs leave the list. Orphaned notes and stop settings remain in the local working copy. Ambiguous edits cannot be matched automatically. Reloading does not send a locate or start playback. Save the setlist file again to keep changes to its song list.
+
 ## Stop and return to the setlist start
 
 The first Stop pauses playback at its current position. Pressing Stop again, or pressing it while already stopped, cues the first song in CueX’s current order and keeps playback stopped. Two quick clicks also work if Logic hasn’t acknowledged the first Stop yet.

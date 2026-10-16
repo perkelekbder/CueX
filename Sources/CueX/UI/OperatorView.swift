@@ -37,6 +37,10 @@ struct OperatorView: View {
         .onAppear(perform: ensureSelectedSection)
         .onChange(of: model.project?.sections.map(\.id)) { _, _ in
             editingSectionID = nil
+            if let oldID = selectedSectionID, let newID = model.reloadedSectionIDs[oldID], newID != oldID {
+                suppressNextLocate = true
+                selectedSectionID = newID
+            }
             ensureSelectedSection()
         }
         .onChange(of: selectedSectionID) { _, sectionID in
@@ -230,7 +234,7 @@ struct OperatorView: View {
                         .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 14))
                         .contentShape(RoundedRectangle(cornerRadius: 14))
                 }
-                .disabled(!model.midiController.isReady || model.playlistAutomation.isTransitioning)
+                .disabled(!model.canStartPlayback)
                 .help("Start playback (Space toggles Play/Stop)")
             }
             .buttonStyle(.plain)
@@ -272,10 +276,26 @@ struct OperatorView: View {
                 .tint(model.midiController.isPlaying == true ? .green : .accentColor)
                 .accessibilityLabel("Song progress")
                 .help(progress.map { "\($0.remainingDescription) remaining" } ?? "Waiting for song position")
-            Text(model.playlistAutomation.status)
-                .font(.caption2)
-                .lineLimit(1)
-                .help("\(model.playlistAutomation.status)\n\(model.midiController.status)" + (progress.map { "\n\($0.remainingDescription) remaining" } ?? ""))
+            if let notice = model.projectChangeNotice {
+                Button { model.handleProjectChangeNotice() } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: model.hasPendingProjectReload ? "exclamationmark.triangle" : "checkmark.circle")
+                        Text(notice).lineLimit(1)
+                        Spacer(minLength: 0)
+                        Image(systemName: model.hasPendingProjectReload ? "arrow.clockwise" : "xmark")
+                    }
+                    .font(.caption2)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(model.hasPendingProjectReload ? Color.orange : Color.secondary)
+                .help(notice + (model.hasPendingProjectReload ? "\nReloads automatically once stopped. Click to retry while stopped." : "\nClick to dismiss."))
+            } else {
+                Text(model.playlistAutomation.status)
+                    .font(.caption2)
+                    .lineLimit(1)
+                    .help("\(model.playlistAutomation.status)\n\(model.midiController.status)" + (progress.map { "\n\($0.remainingDescription) remaining" } ?? ""))
+            }
         }
         .foregroundStyle(.secondary)
         .frame(height: 70, alignment: .topLeading)
@@ -289,7 +309,7 @@ struct OperatorView: View {
         case .togglePlayback:
             if model.midiController.isPlaying == true || model.playlistAutomation.isTransitioning {
                 model.playlistAutomation.manualStop()
-            } else {
+            } else if model.canStartPlayback {
                 model.playlistAutomation.manualPlay()
             }
         case .previousSong:

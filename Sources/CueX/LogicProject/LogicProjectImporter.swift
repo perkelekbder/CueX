@@ -47,7 +47,7 @@ enum LogicProjectImporter {
         }
     }
 
-    private static func projectDataURL(in packageURL: URL) throws -> URL {
+    static func projectDataURL(in packageURL: URL) throws -> URL {
         let alternativesURL = packageURL.appendingPathComponent("Alternatives", isDirectory: true)
         let alternatives = try FileManager.default.contentsOfDirectory(
             at: alternativesURL,
