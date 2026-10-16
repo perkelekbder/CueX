@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 /// Read-only reader for Arrangement section records observed in Logic Pro's saved ProjectData.
@@ -85,17 +86,30 @@ enum LogicProjectImporter {
 
     private static func readNames(from data: Data, records: [Record]) -> [UInt32: String] {
         var names: [UInt32: String] = [:]
-        let expression = try? NSRegularExpression(pattern: #"\\f0\\fs24 \\cf2 ([^}]*)\}"#)
         for record in records where record.tag == "qSxT" {
-            guard record.headerOffset + 12 <= data.count,
-                  let link = data.littleEndianUInt16(at: record.headerOffset + 10),
-                  let expression,
-                  let payloadText = String(data: data[record.payload], encoding: .isoLatin1) else { continue }
-            let range = NSRange(payloadText.startIndex..<payloadText.endIndex, in: payloadText)
-            guard let match = expression.firstMatch(in: payloadText, range: range),
-                  let nameRange = Range(match.range(at: 1), in: payloadText) else { continue }
-            let name = String(payloadText[nameRange]).trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !name.isEmpty else { continue }
+            guard let link = data.littleEndianUInt16(at: record.headerOffset + 10),
+                  record.payload.count >= 24,
+                  let textOffset = data.littleEndianUInt32(at: record.payload.lowerBound + 16),
+                  textOffset >= 24, Int(textOffset) < record.payload.count else { continue }
+            // qSxT has a binary prefix; its text-offset field currently points
+            // 98 bytes into the payload. New sections may use null-terminated
+            // plain text, while older or formatted names contain an RTF document.
+            let start = record.payload.lowerBound + Int(textOffset)
+            let bytes = Data(data[start..<record.payload.upperBound].prefix { $0 != 0 })
+            guard !bytes.isEmpty else { continue }
+            let decoded: String?
+            if bytes.starts(with: Data("{\\rtf".utf8)) {
+                decoded = (try? NSAttributedString(
+                    data: bytes,
+                    options: [.documentType: NSAttributedString.DocumentType.rtf],
+                    documentAttributes: nil
+                ))?.string
+            } else {
+                decoded = String(data: bytes, encoding: .utf8)
+                    ?? String(data: bytes, encoding: .windowsCP1252)
+            }
+            guard let name = decoded?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !name.isEmpty else { continue }
             names[UInt32(link)] = name
         }
         return names

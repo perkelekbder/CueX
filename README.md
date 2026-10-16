@@ -9,7 +9,7 @@ CueX is a native macOS show-control app for Logic Pro playback projects.
 - Per-song note editors open from the row’s note button; file actions live in the setlist title menu
 - Select a saved `.logicx` project
 - Read `ProjectData` without modifying the Logic project
-- Display Arrangement section names and start ticks while excluding the separate Marker-track sequence
+- Read Arrangement section names stored as plain text or RTF, while excluding the separate Marker-track sequence
 - View section positions and stored durations as meter-aware bars and beats in song tooltips
 - Edit per-section operator notes, stored in CueX's Application Support folder
 - Reload the project after saving changes in Logic
