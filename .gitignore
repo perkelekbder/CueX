@@ -1,0 +1,17 @@
+# SwiftPM and local Xcode state
+.build/
+.swiftpm/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+
+# Generated app snapshots and archives
+Builds/
+
+# Personal Logic projects and saved setlists
+*.logicx
+*.cuex.json
+
+# macOS metadata
+.DS_Store
+._*
