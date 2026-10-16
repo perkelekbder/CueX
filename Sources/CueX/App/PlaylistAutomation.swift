@@ -21,6 +21,9 @@ final class PlaylistAutomation {
     @ObservationIgnored private var lastSample: ContinuousClock.Instant?
     @ObservationIgnored private var previousBeat: Int?
     @ObservationIgnored private var wasPlaying = false
+    @ObservationIgnored private var projectStartGuard = ProjectStartReturnGuard()
+    @ObservationIgnored private var manualStopAwaitingAcknowledgement = false
+    @ObservationIgnored private var returnToStartAfterManualStop = false
 
     init(midi: LogicMIDIController) {
         self.midi = midi
@@ -34,6 +37,8 @@ final class PlaylistAutomation {
         retryTask?.cancel()
         self.project = project
         self.savedIDs = savedIDs
+        clearManualStopRequest()
+        projectStartGuard.reset(position: midi.position, receivedAt: midi.positionReceivedAt)
         armedSectionID = nil
         status = "Last song always stops"
         receiveFeedback()
@@ -49,25 +54,78 @@ final class PlaylistAutomation {
     }
 
     func manualLocate(_ section: ArrangementSection) {
+        guard let project else { return }
         cancelResume()
         cancelRun()
         retryTask?.cancel()
         transition.reset()
+        clearManualStopRequest()
         armedSectionID = nil
-        status = "Ready: \(section.name)"
+        status = sendLocate(section, in: project) ? "Ready: \(section.name)" : "Stopped: couldn’t cue \(section.name)"
+    }
+
+    func manualPlay() {
+        clearManualStopRequest()
+        midi.play()
     }
 
     func manualStop() {
+        // The second click can precede Logic's acknowledgement of the first.
+        let returnToStart = midi.isPlaying == false || manualStopAwaitingAcknowledgement
+        manualStopAwaitingAcknowledgement = midi.isPlaying != false
+        returnToStartAfterManualStop = returnToStart
         cancelResume()
         cancelRun()
         retryTask?.cancel()
         transition.reset()
         status = "Stopped by operator"
         midi.stopForPlaylist()
+        if midi.isPlaying == false { cueSetlistStart() }
+    }
+
+    private func clearManualStopRequest() {
+        manualStopAwaitingAcknowledgement = false
+        returnToStartAfterManualStop = false
+    }
+
+    private func sendLocate(_ section: ArrangementSection, in project: ImportedLogicProject) -> Bool {
+        let sentAt = ContinuousClock.now
+        guard midi.locate(tick: section.startTick, tempoChanges: project.tempoChanges, frameRate: project.timecodeFrameRate) else { return false }
+        projectStartGuard.didLocate(tick: section.startTick, sentAt: sentAt)
+        return true
+    }
+
+    private func cueSetlistStart() {
+        guard let project, let first = project.sections.first else { return }
+        cancelResume()
+        cancelRun()
+        retryTask?.cancel()
+        transition.reset()
+        clearManualStopRequest()
+        guard sendLocate(first, in: project) else {
+            status = "Stopped: couldn’t cue the setlist start"
+            return
+        }
+        armedSectionID = first.id
+        status = "Ready: \(first.name) · Setlist start"
     }
 
     private func receiveFeedback() {
         guard let project else { return }
+        let returnedToProjectStart = projectStartGuard.observe(
+            position: midi.position, receivedAt: midi.positionReceivedAt, isPlaying: midi.isPlaying)
+        if midi.isPlaying == false, manualStopAwaitingAcknowledgement {
+            let shouldReturn = returnToStartAfterManualStop
+            clearManualStopRequest()
+            if shouldReturn {
+                cueSetlistStart()
+                return
+            }
+        }
+        if returnedToProjectStart, transition.pending == nil, pendingResume == nil {
+            cueSetlistStart()
+            return
+        }
         if let completion = transition.acknowledge(isPlaying: midi.isPlaying) {
             cancelRun()
             retryTask?.cancel()
@@ -78,7 +136,7 @@ final class PlaylistAutomation {
                     // Stop has been acknowledged. Cue exactly once, keeping the
                     // transport stopped; the view follows armedSectionID.
                     let sentAt = ContinuousClock.now
-                    guard midi.locate(tick: next.startTick, tempoChanges: project.tempoChanges, frameRate: project.timecodeFrameRate) else {
+                    guard sendLocate(next, in: project) else {
                         status = "Stopped: couldn’t cue \(next.name)"
                         return
                     }

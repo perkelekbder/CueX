@@ -222,7 +222,7 @@ struct OperatorView: View {
                 }
                 .disabled(!model.midiController.isReady)
                 .help("Stop playback (Space toggles Play/Stop)")
-                Button { model.midiController.play() } label: {
+                Button { model.playlistAutomation.manualPlay() } label: {
                     Label("Play", systemImage: "play.fill")
                         .font(.system(size: 22, weight: .semibold))
                         .frame(maxWidth: .infinity, minHeight: 72)
@@ -290,7 +290,7 @@ struct OperatorView: View {
             if model.midiController.isPlaying == true || model.playlistAutomation.isTransitioning {
                 model.playlistAutomation.manualStop()
             } else {
-                model.midiController.play()
+                model.playlistAutomation.manualPlay()
             }
         case .previousSong:
             if let previousSection { selectedSectionID = previousSection.id }

@@ -63,6 +63,12 @@ Drag a song row to its new position while playback is stopped. Reordering preser
 
 Unchecked songs continue naturally when the next setlist song starts exactly at the current song’s end in Logic. Otherwise CueX stops at the boundary, waits for stopped feedback, locates the next song, and resumes only after fresh position feedback confirms that song. These jumps can introduce a brief gap; they are not gapless transitions. A failed locate or a missing position confirmation leaves playback stopped. CueX’s Stop button cancels a pending automatic restart.
 
+## Stop and return to the setlist start
+
+The first Stop pauses playback at its current position. Pressing Stop again, or pressing it while already stopped, cues the first song in CueX’s current order and keeps playback stopped. Two quick clicks also work if Logic hasn’t acknowledged the first Stop yet.
+
+CueX also watches Logic’s musical-position feedback: if Logic jumps back to its exact project start while stopped (for example, after Stop is pressed again in Logic), CueX redirects it to the first setlist song. Deliberately selecting a CueX song that starts at Bar 1 remains valid. Logic doesn’t identify why its playhead moved, so a manual jump to the exact project start while stopped is handled the same way. This requires working position feedback and MMC locating.
+
 ## Program automatic stops
 
 Use the Stop After checkbox on each setlist row to program the playlist. Unchecked songs continue into the next song. Checked songs stop at their end, then CueX waits for Logic to confirm that playback stopped before locating the next song and selecting its row. The last song's checkbox is always checked and locked; it stops without wrapping to the first song. Settings are stored on this Mac alongside the project's operator notes.

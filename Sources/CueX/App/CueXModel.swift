@@ -274,8 +274,6 @@ final class CueXModel {
     }
 
     func locate(_ section: ArrangementSection) {
-        guard let project else { return }
         playlistAutomation.manualLocate(section)
-        midiController.locate(tick: section.startTick, tempoChanges: project.tempoChanges, frameRate: project.timecodeFrameRate)
     }
 }
