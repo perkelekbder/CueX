@@ -4,7 +4,7 @@ CueX is a native macOS show-control app for Logic Pro playback projects.
 
 ## Current milestone
 
-- Menu-bar app with a compact vertical operator window that opens on launch
+- Single-window macOS app with a compact vertical operator window that opens on launch
 - Setlist fills most of the window, with large transport controls below and compact status in the footer
 - Per-song note editors open from the row’s note button; file actions live in the setlist title menu
 - Select a saved `.logicx` project
@@ -34,6 +34,8 @@ The footer’s song progress follows that same feedback, updating once per beat.
 
 MMC locating currently assumes bar 1 is at 01:00:00:00 and supports saved 24, 25, or 30 fps non-drop projects. Locates round forward to the next frame; custom SMPTE offsets, fractional frame rates and drop-frame conversion need further work.
 
+The Dock icon brings back the same operator window after closing or minimizing it. Closing the window keeps CueX running; use **CueX → Quit CueX** or **⌘Q** to quit, with the existing prompt for unsaved setlist changes.
+
 ## Keyboard controls
 
 With the CueX operator window active, **Space** toggles Play/Stop and **↑ / ↓** select and locate the previous/next song in CueX order, without wrapping. Space also cancels a pending automatic restart. Holding a key triggers only one action per press. Shortcuts use the same behavior as the transport and song navigation buttons, including locating while playback is running.
@@ -47,7 +49,7 @@ Use the window’s Setlist menu or the File menu:
 - **Save Setlist** (`⌘S`) saves the current order, operator notes, and Stop After settings to a `.cuex.json` file. Later saves update that file.
 - **Save Setlist As** (`⇧⌘S`) creates another named version, so multiple setlists can use the same Logic project.
 - **Open Setlist** (`⌘O`) restores a saved version while playback is stopped.
-- **Open Recent** in the File, Setlist, and menu-bar menus remembers the last ten successfully opened or saved setlists across launches. Most recent comes first. Clear Menu removes this history without deleting files. Missing files show an error and can be located with Open Setlist.
+- **Open Recent** in the File and Setlist menus remembers the last ten successfully opened or saved setlists across launches. Most recent comes first. Clear Menu removes this history without deleting files. Missing files show an error and can be located with Open Setlist.
 
 The heading shows the file name and a dot for unsaved changes. Edits still save to the local working copy automatically; use Save to update the portable file. CueX prompts to save unsaved changes before switching projects/setlists or quitting.
 
@@ -76,6 +78,8 @@ To create a Finder-launchable app and ZIP archive:
 ```sh
 ./scripts/build-app.sh
 ```
+
+The script uses the full Xcode toolchain. If the active tools point to standalone Command Line Tools, it uses `/Applications/Xcode.app` when installed, without changing system settings. For Xcode installed elsewhere, set `DEVELOPER_DIR` to its `Contents/Developer` directory before running the script.
 
 The script prints the app and archive paths under `Builds/CueX-<timestamp>/`. Quit any older CueX process before launching the new app, so only one copy creates the MIDI ports. Each build targets the Mac architecture it was built on; this script does not create a universal binary.
 

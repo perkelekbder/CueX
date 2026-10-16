@@ -53,21 +53,6 @@ struct OperatorView: View {
             suppressNextLocate = true
             selectedSectionID = sectionID
         }
-        .task(id: model.setlistPickerRequestID) {
-            let requestID = model.setlistPickerRequestID
-            guard requestID > 0 else { return }
-            try? await Task.sleep(for: .milliseconds(300))
-            guard !Task.isCancelled else { return }
-            model.handleSetlistPickerRequest(requestID)
-        }
-        .task(id: model.projectPickerRequestID) {
-            let requestID = model.projectPickerRequestID
-            guard requestID > 0 else { return }
-            // Let the menu popover close and the operator window become active first.
-            try? await Task.sleep(for: .milliseconds(300))
-            guard !Task.isCancelled else { return }
-            model.handleProjectPickerRequest(requestID)
-        }
     }
 
     private var fileControls: some View {

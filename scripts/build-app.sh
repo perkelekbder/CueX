@@ -4,8 +4,22 @@ set -euo pipefail
 project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$project_dir"
 
-swift build -c release
-binary_dir="$(swift build -c release --show-bin-path)"
+# SwiftUI compiler plug-ins require the full Xcode toolchain. Installing
+# Command Line Tools for Git may change xcode-select without removing Xcode.
+if [[ -z "${DEVELOPER_DIR:-}" ]]; then
+    selected_developer_dir="$(xcode-select -p)"
+    if [[ "$selected_developer_dir" == */CommandLineTools ]]; then
+        if [[ -d /Applications/Xcode.app/Contents/Developer ]]; then
+            export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+        else
+            printf 'Install Xcode or set DEVELOPER_DIR to its Contents/Developer directory.\n' >&2
+            exit 1
+        fi
+    fi
+fi
+
+xcrun swift build -c release
+binary_dir="$(xcrun swift build -c release --show-bin-path)"
 build_stamp="$(date +%Y-%m-%d-%H%M%S)"
 snapshot_dir="$project_dir/Builds/CueX-$build_stamp"
 app_bundle="$snapshot_dir/CueX.app"

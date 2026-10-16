@@ -9,20 +9,15 @@ final class CueXModel {
     private(set) var project: ImportedLogicProject?
     private(set) var sectionNotes: [String: String] = [:]
     private(set) var stopAfterSongIDs: Set<String> = []
-    private(set) var projectPickerRequestID = 0
     private(set) var setlistURL: URL?
     private(set) var hasUnsavedSetlistChanges = false
-    private(set) var setlistPickerRequestID = 0
     private(set) var recentSetlistURLs: [URL] = RecentSetlistsStore().load()
-    @ObservationIgnored private var requestedSetlistURL: URL?
     private let recentSetlistsStore = RecentSetlistsStore()
-    private var handledSetlistPickerRequestID = 0
     var errorMessage: String?
     var isImporting = false
     private let notesStore = OperatorNotesStore()
     let midiController = LogicMIDIController()
     let playlistAutomation: PlaylistAutomation
-    private var handledProjectPickerRequestID = 0
 
     init() {
         playlistAutomation = PlaylistAutomation(midi: midiController)
@@ -54,16 +49,6 @@ final class CueXModel {
     var songProgress: SongProgress? {
         guard let project, let position = midiController.position else { return nil }
         return SongProgress(project: project, position: position)
-    }
-
-    func requestProjectPicker() {
-        projectPickerRequestID += 1
-    }
-
-    func handleProjectPickerRequest(_ requestID: Int) {
-        guard requestID > handledProjectPickerRequestID else { return }
-        handledProjectPickerRequestID = requestID
-        chooseProject()
     }
 
     func chooseProject() {
@@ -157,19 +142,6 @@ final class CueXModel {
         var title = setlistURL?.deletingPathExtension().lastPathComponent ?? "Unsaved setlist"
         if title.hasSuffix(".cuex") { title.removeLast(5) }
         return title + (hasUnsavedSetlistChanges ? " •" : "")
-    }
-
-    func requestSetlistPicker(url: URL? = nil) {
-        requestedSetlistURL = url
-        setlistPickerRequestID += 1
-    }
-
-    func handleSetlistPickerRequest(_ requestID: Int) {
-        guard requestID > handledSetlistPickerRequestID else { return }
-        handledSetlistPickerRequestID = requestID
-        let requested = requestedSetlistURL
-        requestedSetlistURL = nil
-        if let requested { openSetlist(at: requested) } else { openSetlist() }
     }
 
     @discardableResult

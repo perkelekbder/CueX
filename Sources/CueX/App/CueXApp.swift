@@ -7,11 +7,11 @@ struct CueXApp: App {
     @Environment(\.openWindow) private var openWindow
 
     var body: some Scene {
-
         Window("CueX", id: "operator") {
             OperatorView(model: model)
                 .onAppear {
                     appDelegate.model = model
+                    appDelegate.showOperatorWindow = { [openWindow] in openWindow(id: "operator") }
                     appDelegate.prepareOperatorWindow()
                 }
         }
@@ -19,13 +19,22 @@ struct CueXApp: App {
         .windowResizability(.contentMinSize)
         .commands {
             CommandGroup(replacing: .newItem) {
-                Button("Open Setlist…") { model.openSetlist() }
-                    .keyboardShortcut("o")
-                    .disabled(!model.canReorder)
-                RecentSetlistsMenu(model: model)
-                Button("Select Logic Project…") { model.chooseProject() }
-                    .keyboardShortcut("o", modifiers: [.command, .shift])
-                    .disabled(!model.canReorder)
+                Button("Open Setlist…") {
+                    openWindow(id: "operator")
+                    model.openSetlist()
+                }
+                .keyboardShortcut("o")
+                .disabled(!model.canReorder)
+                RecentSetlistsMenu(model: model) { url in
+                    openWindow(id: "operator")
+                    model.openSetlist(at: url)
+                }
+                Button("Select Logic Project…") {
+                    openWindow(id: "operator")
+                    model.chooseProject()
+                }
+                .keyboardShortcut("o", modifiers: [.command, .shift])
+                .disabled(!model.canReorder)
             }
             CommandGroup(replacing: .saveItem) {
                 Button("Save Setlist…") { model.saveSetlist() }
@@ -36,45 +45,28 @@ struct CueXApp: App {
                     .disabled(model.project?.sections.isEmpty != false)
             }
         }
-
-        MenuBarExtra("CueX", systemImage: "music.note.list") {
-            Button("Open CueX") { openWindow(id: "operator") }
-            Divider()
-            Button("Open Setlist…") {
-                model.requestSetlistPicker()
-                openWindow(id: "operator")
-            }
-            .disabled(!model.canReorder)
-            RecentSetlistsMenu(model: model) { url in
-                model.requestSetlistPicker(url: url)
-                openWindow(id: "operator")
-            }
-            Button("Select Logic Project…") {
-                model.requestProjectPicker()
-                openWindow(id: "operator")
-            }
-            .disabled(!model.canReorder)
-            if let project = model.project {
-                Text(project.projectName)
-                Text("\(project.sections.count) sections imported")
-                    .foregroundStyle(.secondary)
-            }
-            Divider()
-            Button("Quit CueX") { NSApplication.shared.terminate(nil) }
-                .keyboardShortcut("q")
-        }
-
     }
 }
 
 @MainActor
 final class CueXAppDelegate: NSObject, NSApplicationDelegate {
     weak var model: CueXModel?
+    var showOperatorWindow: (() -> Void)?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // The operator Window is the first scene, so SwiftUI creates it at
         // launch. Bring CueX forward as well when started from Terminal.
         NSApplication.shared.activate(ignoringOtherApps: true)
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        showOperatorWindow?()
+        sender.activate(ignoringOtherApps: true)
+        return false
     }
 
     func prepareOperatorWindow() {
