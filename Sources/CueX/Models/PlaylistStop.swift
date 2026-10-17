@@ -10,8 +10,7 @@ struct PlaylistStopBoundary: Equatable {
 
 enum PlaylistStopPolicy {
     static func isEnabled(for section: ArrangementSection, in project: ImportedLogicProject, savedIDs: Set<String>) -> Bool {
-        section.isFullStop || section.id == project.playableEntries.last?.id
-            || savedIDs.contains(section.id)
+        section.isFullStop || savedIDs.contains(section.id)
     }
 
     static func nextBoundary(from tick: Int, project: ImportedLogicProject, savedIDs: Set<String>) -> PlaylistStopBoundary? {
@@ -39,7 +38,7 @@ enum PlaylistStopPolicy {
                 && project.sections[nextIndex].startTick == section.startTick + section.lengthTicks
             if stop || !contiguous {
                 var result = boundary(index: index, project: project)
-                result.continuesAutomatically = !stop && result.nextSectionID != nil
+                result.continuesAutomatically = !stop && result.nextSectionID != nil && next?.isFullStop != true
                 return result
             }
             index = nextIndex

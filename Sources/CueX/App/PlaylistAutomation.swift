@@ -4,7 +4,7 @@ import Observation
 @Observable
 @MainActor
 final class PlaylistAutomation {
-    private(set) var status = "Last song always stops"
+    private(set) var status = "Full stop marks the end of the set"
     private(set) var armedSectionID: String?
     private(set) var setFinishedAt: Date?
     private(set) var isTransitioning = false
@@ -53,7 +53,7 @@ final class PlaylistAutomation {
         clearManualStopRequest()
         projectStartGuard.reset(position: midi.position, receivedAt: midi.positionReceivedAt)
         armedSectionID = nil
-        status = "Last song always stops"
+        status = "Full stop marks the end of the set"
         receiveFeedback()
     }
 

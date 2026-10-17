@@ -56,6 +56,7 @@ struct SetlistDocument: Codable {
         let sections = Dictionary(uniqueKeysWithValues: (project.sections + blocks).map { ($0.id, $0) })
         var result = project
         result.sections = sectionOrder.compactMap { sections[$0] }
+        result.ensureFullStop()
         return result
     }
 

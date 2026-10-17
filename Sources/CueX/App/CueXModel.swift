@@ -37,7 +37,7 @@ final class CueXModel {
     }
 
     func setStopsAfter(_ enabled: Bool, for section: ArrangementSection) {
-        guard let project, section.isSong, section.id != project.playableEntries.last?.id else { return }
+        guard let project, section.isSong else { return }
         var updated = stopAfterSongIDs
         if enabled { updated.insert(section.id) } else { updated.remove(section.id) }
         do {
@@ -153,7 +153,6 @@ final class CueXModel {
                 if let note = notes.removeValue(forKey: oldID) { notes[newID] = note }
                 if stops.remove(oldID) != nil { stops.insert(newID) }
             }
-            try notesStore.saveConfiguration(notes: notes, stops: stops, order: restored.sections.map(\.id), blocks: restored.sections.filter { !$0.isSong }, for: url)
         } else {
             let order = try notesStore.loadSectionOrder(for: url)
             let blocks = try notesStore.loadCustomBlocks(for: url)
@@ -162,10 +161,19 @@ final class CueXModel {
             restored.sections = order.compactMap { id in
                 guard seen.insert(id).inserted else { return nil }
                 return available.first { $0.id == id }
-            } + imported.sections.filter { !seen.contains($0.id) }
+            }
+            let added = imported.sections.filter { !seen.contains($0.id) }
+            if restored.sections.last?.isFullStop == true, restored.sections.last?.id == order.last {
+                restored.sections.insert(contentsOf: added, at: restored.sections.count - 1)
+            } else {
+                restored.sections.append(contentsOf: added)
+            }
             notes = try notesStore.load(for: url)
             stops = try notesStore.loadStopAfterSongIDs(for: url)
         }
+        restored.ensureFullStop()
+        try notesStore.saveConfiguration(notes: notes, stops: stops, order: restored.sections.map(\.id),
+            blocks: restored.sections.filter { !$0.isSong }, for: url)
         if !isReload {
             setlistURL = nil
             hasUnsavedSetlistChanges = false
@@ -277,10 +285,13 @@ final class CueXModel {
         saveSetlistOrder(updated)
     }
 
-    func addBlock(_ kind: SetlistBlock.Kind, after selectedID: String?) {
+    func addPause(after selectedID: String?) {
         guard canReorder, var updated = project else { return }
-        let entry = ArrangementSection(block: SetlistBlock(kind: kind, seconds: kind == .pause ? 30 : 0))
-        let index = updated.sections.firstIndex { $0.id == selectedID }.map { $0 + 1 } ?? updated.sections.count
+        let entry = ArrangementSection(block: SetlistBlock(kind: .pause, seconds: 30))
+        // Adding while the end marker is selected puts the pause before it.
+        let index = updated.sections.firstIndex { $0.id == selectedID }.map {
+            updated.sections[$0].isFullStop ? $0 : $0 + 1
+        } ?? updated.sections.firstIndex(where: \.isFullStop) ?? updated.sections.count
         updated.sections.insert(entry, at: index)
         saveSetlistOrder(updated)
     }
@@ -295,12 +306,14 @@ final class CueXModel {
     }
 
     func removeBlock(_ section: ArrangementSection) {
-        guard canReorder, !section.isSong, var updated = project else { return }
+        guard canReorder, section.block?.kind == .pause, var updated = project else { return }
         updated.sections.removeAll { $0.id == section.id }
         saveSetlistOrder(updated)
     }
 
     private func saveSetlistOrder(_ updated: ImportedLogicProject) {
+        var updated = updated
+        updated.ensureFullStop()
         do {
             try notesStore.saveConfiguration(notes: sectionNotes, stops: stopAfterSongIDs,
                 order: updated.sections.map(\.id), blocks: updated.sections.filter { !$0.isSong }, for: updated.projectURL)
@@ -429,7 +442,7 @@ final class CueXModel {
             let linkedURL = restored.projectURL
             let stops = Set(document.stopAfterSongIDs)
             try notesStore.saveConfiguration(notes: document.notes, stops: stops,
-                order: document.sectionOrder, blocks: restored.sections.filter { !$0.isSong }, for: linkedURL)
+                order: restored.sections.map(\.id), blocks: restored.sections.filter { !$0.isSong }, for: linkedURL)
             reloadedSectionIDs = [:]
             project = restored
             setlistDurations = SetlistDurations(project: restored)
@@ -438,6 +451,7 @@ final class CueXModel {
             setlistURL = url
             rememberSetlist(url)
             hasUnsavedSetlistChanges = linkedURL.standardizedFileURL.path != document.logicProjectPath
+                || restored.sections.map(\.id) != document.sectionOrder
             playlistAutomation.configure(project: restored, savedIDs: stops)
             monitorProject(at: linkedURL, baseline: restoredSnapshot)
             projectChangeNotice = nil

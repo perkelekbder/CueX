@@ -34,7 +34,13 @@ enum ProjectReloadMerger {
             if !old.isSong { return old }
             guard let newID = matches[old.id] else { return nil }
             return imported.sections.first { $0.id == newID }
-        } + imported.sections.filter { !usedNewIDs.contains($0.id) }
+        }
+        let added = imported.sections.filter { !usedNewIDs.contains($0.id) }
+        if previous.sections.last?.isFullStop == true, result.sections.last?.isFullStop == true {
+            result.sections.insert(contentsOf: added, at: result.sections.count - 1)
+        } else {
+            result.sections.append(contentsOf: added)
+        }
         return ProjectReloadMerge(project: result, sectionIDs: matches)
     }
 }

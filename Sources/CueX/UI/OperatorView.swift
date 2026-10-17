@@ -89,15 +89,14 @@ struct OperatorView: View {
             .menuStyle(.borderlessButton)
             .help("Open, save, or reload a setlist")
             Menu {
-                Button("Add Pause") { model.addBlock(.pause, after: selectedSectionID) }
-                Button("Add Full Stop") { model.addBlock(.fullStop, after: selectedSectionID) }
+                Button("Add Pause") { model.addPause(after: selectedSectionID) }
             } label: {
                 Image(systemName: "plus.circle").frame(width: 28, height: 28)
             }
             .menuStyle(.borderlessButton)
             .fixedSize()
             .disabled(model.project == nil || !model.canReorder)
-            .help("Add a block after the selected row, then drag it into place")
+            .help("Add a pause after the selected row, then drag it into place")
             Button { model.saveSetlist() } label: {
                 Image(systemName: "square.and.arrow.down")
                     .frame(width: 28, height: 28)
@@ -155,9 +154,9 @@ struct OperatorView: View {
                 .contextMenu {
                     if !section.isFullStop {
                         Button("Edit Pause…") { editingSectionID = section.id }
+                        Button("Remove Pause", role: .destructive) { model.removeBlock(section) }
+                            .disabled(!model.canReorder)
                     }
-                    Button("Remove Block", role: .destructive) { model.removeBlock(section) }
-                        .disabled(!model.canReorder)
                 }
         }
     }
@@ -213,7 +212,6 @@ struct OperatorView: View {
     }
 
     private func songRow(_ section: ArrangementSection, index: Int, project: ImportedLogicProject) -> some View {
-        let isLast = section.id == project.playableEntries.last?.id
         return HStack(spacing: 10) {
             Text(String(format: "%02d", index + 1))
                 .font(.caption.monospacedDigit())
@@ -252,16 +250,11 @@ struct OperatorView: View {
                 ))
                 .toggleStyle(.checkbox)
                 .font(.caption)
-                .disabled(isLast || model.playlistAutomation.isTransitioning)
+                .disabled(model.playlistAutomation.isTransitioning)
                 .accessibilityLabel("Stop after \(section.name)")
-                Image(systemName: "lock.fill")
-                    .font(.system(size: 8))
-                    .foregroundStyle(.secondary)
-                    .opacity(isLast ? 1 : 0)
-                    .accessibilityHidden(!isLast)
             }
             .frame(width: 66)
-            .help(isLast ? "The final song always stops." : "Stop after this song and cue the next song ready for Play.")
+            .help("Stop after this song and cue the next song ready for Play. Full Stop always ends the set.")
         }
         .frame(height: 48)
         .contentShape(Rectangle())

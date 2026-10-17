@@ -38,6 +38,21 @@ struct ImportedLogicProject: Hashable {
     var songs: [ArrangementSection] { sections.filter(\.isSong) }
     var playableEntries: [ArrangementSection] { Array(sections.prefix { !$0.isFullStop }) }
 
+    /// Keep the earliest saved stop in place when migrating older setlists.
+    /// Fresh arrangements get their permanent stop after every song.
+    mutating func ensureFullStop() {
+        var found = false
+        sections.removeAll { entry in
+            guard entry.isFullStop else { return false }
+            if found { return true }
+            found = true
+            return false
+        }
+        if !found {
+            sections.append(ArrangementSection(block: SetlistBlock(kind: .fullStop, seconds: 0)))
+        }
+    }
+
     func isExcluded(_ id: String) -> Bool {
         guard let stop = sections.firstIndex(where: \.isFullStop),
               let index = sections.firstIndex(where: { $0.id == id }) else { return false }

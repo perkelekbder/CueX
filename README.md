@@ -19,7 +19,7 @@ CueX is a native macOS show-control app for Logic Pro playback projects.
 - Show current-song progress in the footer; hover to see remaining bars/beats
 - Step through selected songs with Previous Song / Next Song, locate them, and bring their notes into view
 - Drag and drop songs and custom pause/full-stop blocks in CueX, saving order on this Mac without modifying Logic
-- Save a Stop After setting for each song; the final song is always locked on
+- Save a Stop After setting for each song; a permanent, movable Full Stop block ends the set
 - After an automatic stop is acknowledged by Logic, select and cue the next song ready for Play
 
 The Logic project format is undocumented. The importer is isolated so its format assumptions can be revised without changing the app UI. It distinguishes the Arrangement sequence from the following Marker-track sequence using the observed sequence ordering. A local remote API and the iPhone browser view are future milestones.
@@ -66,20 +66,20 @@ The heading shows the file name and a dot for unsaved changes. Edits still save 
 
 To transfer a setlist, copy its file and the `.logicx` project, including audio, to the other Mac. CueX first looks for a matching project beside the setlist, then at its original location, and otherwise asks you to locate it. Save after relinking to remember the new path. The setlist does not contain audio, tempo data, or a copy of the Logic project. CueX reads those from the linked saved project and never writes to it.
 
-Song matching uses imported section names and start positions. If sections were renamed, moved, added, or removed in Logic, CueX rejects the old setlist rather than silently attaching settings to different songs; import the updated Logic project to make a new setlist. The final song’s Stop After lock is always enforced on recall.
+Song matching uses imported section names and start positions. If sections were renamed, moved, added, or removed in Logic, CueX rejects the old setlist rather than silently attaching settings to different songs; import the updated Logic project to make a new setlist. A permanent Full Stop block is always enforced on recall; older setlists without one receive it at the end.
 
 ## Arrange the CueX setlist
 
-Drag a song row to its new position while playback is stopped. Reordering preserves the selected song and does not change Logic’s arrangement. Previous Song / Next Song follow the CueX order. The order is restored on reload; newly imported sections are appended and removed sections are dropped. Notes and stop settings stay attached to their songs. The locked final song stop follows the playable end of CueX’s setlist; a full-stop block can end the set earlier.
+Drag a song row to its new position while playback is stopped. Reordering preserves the selected song and does not change Logic’s arrangement. Previous Song / Next Song follow the CueX order. The order is restored on reload; newly imported sections are appended before Full Stop when it is at the end, and removed sections are dropped. When Full Stop was moved earlier, new sections stay after it and are excluded until moved above it. Notes and stop settings stay attached to their songs. Full Stop defaults to the end and can be moved earlier to shorten the set. Its position is preserved in the local working copy and saved setlist.
 
 Unchecked songs continue naturally when the next setlist song starts exactly at the current song’s end in Logic. Otherwise CueX stops at the boundary, waits for stopped feedback, locates the next song, and resumes only after fresh position feedback confirms that song. These jumps can introduce a brief gap; they are not gapless transitions. A failed locate or a missing position confirmation leaves playback stopped. CueX’s Stop button cancels a pending automatic restart.
 
 ## Custom setlist blocks
 
-Use the **+** menu beside the setlist title to add a **Pause** or **Full Stop** after the selected row. Drag blocks just like songs to place them anywhere, including before the first song or after the last. Right-click a block to remove it. Blocks are stored in both the local working copy and portable `.cuex.json` files, and survive Logic project reloads. Existing version 1 setlists still open; new saves use version 2 and require this version of CueX or newer.
+Use the **+** menu beside the setlist title to add a **Pause** after the selected row (before Full Stop when that row is selected). Every setlist already has one permanent **Full Stop**, initially at the end. Drag blocks just like songs to place them anywhere, including before the first song or after the last. Right-click a pause to remove it; Full Stop cannot be added or removed. Blocks are stored in both the local working copy and portable `.cuex.json` files, and survive Logic project reloads. Existing version 1 setlists still open; new saves use version 2 and require this version of CueX or newer.
 
 - **Pause:** click its seconds/pencil button to choose 1–86,400 seconds (default 30). At the preceding song’s end, CueX waits for Logic to confirm Stop, counts down, then locates and starts the next song only after fresh position feedback confirms the cue. A pause overrides the preceding song’s ordinary Stop setting so the sequence resumes automatically. Consecutive pauses run in order. A leading pause starts when you select it and press Play; a trailing pause finishes the set after its countdown. Stop or Space cancels a running countdown; Play restarts that pause from its full configured duration. Selecting another enabled row also cancels the countdown.
-- **Full Stop:** its Stop checkbox is always checked and locked. Playback ends here, with no automatic cue beyond it. Rows after the first full stop are grayed out, excluded from total/remaining/finish timing, skipped by Previous/Next, and cannot be cued or played from CueX. Drag them above the block or move/remove the block to enable them again. The block itself has zero duration. If multiple full stops exist, the first one ends the set.
+- **Full Stop:** its Stop checkbox is always checked and locked. Playback ends here, with no automatic cue beyond it. Rows after the first full stop are grayed out, excluded from total/remaining/finish timing, skipped by Previous/Next, and cannot be cued or played from CueX. Drag them above the block or move the block later to enable them again. The block itself has zero duration, and its saved position is recalled. Older setlists without a full stop receive one at the end; if an older setlist has several, the earliest is kept in place.
 
 CueX also sends Stop if Logic reports playback in an excluded song or restarts after the set has finished. These controls require CueX running and working MIDI communication; they do not change Logic’s arrangement or disable Logic’s own controls.
 
@@ -99,7 +99,7 @@ CueX monitors the linked project’s saved `ProjectData` and frame-rate metadata
 
 After Logic saves, a warning appears in the footer before CueX reloads the project. During playback or an automatic transition, the warning stays visible and reloading waits until playback stops. Starting playback is disabled while a reload is pending; Stop remains available. After reloading, click the footer notice to dismiss it. If the project is temporarily unavailable or cannot be read, CueX keeps the previous imported state and offers retry from the footer.
 
-Reloading preserves CueX order, custom blocks, notes, stop settings, and selection for matching songs. Exact section matches are kept first; moved songs can match by unique name, and renamed songs by an unambiguous start position. Unmatched new songs are appended in Logic timeline order, and removed songs leave the list. Orphaned notes and stop settings remain in the local working copy. Ambiguous edits cannot be matched automatically. Reloading does not send a locate or start playback. Save the setlist file again to keep changes to its song list.
+Reloading preserves CueX order, custom blocks, notes, stop settings, and selection for matching songs. Exact section matches are kept first; moved songs can match by unique name, and renamed songs by an unambiguous start position. Unmatched new songs are appended in Logic timeline order, before Full Stop if it was at the end; an earlier Full Stop keeps new songs excluded. Removed songs leave the list. Orphaned notes and stop settings remain in the local working copy. Ambiguous edits cannot be matched automatically. Reloading does not send a locate or start playback. Save the setlist file again to keep changes to its song list.
 
 ## Stop and return to the setlist start
 
@@ -109,7 +109,7 @@ CueX also watches Logic’s musical-position feedback: if Logic jumps back to it
 
 ## Program automatic stops
 
-Use the Stop After checkbox on each setlist row to program the playlist. Unchecked songs continue into the next song. Checked songs stop at their end, then CueX waits for Logic to confirm that playback stopped before locating the next song and selecting its row. The last song's checkbox is always checked and locked; it stops without wrapping to the first song. Settings are stored on this Mac alongside the project's operator notes.
+Use the Stop After checkbox on each setlist row to program the playlist. Unchecked songs continue into the next song. Checked songs stop at their end, then CueX waits for Logic to confirm that playback stopped before locating the next song and selecting its row. Every song’s checkbox is editable, including the final song. The permanent Full Stop block is checked and locked, ends playback, and prevents wrapping to the first song. Settings are stored on this Mac alongside the project's operator notes.
 
 Automatic stops require CueX to remain running with working MIDI input/output and Logic's MMC input enabled. They use the saved tempo map and within-beat clock feedback, with a 30 ms delivery lead before the section boundary. They are software-timed, not an audio mute or a native Logic project end marker. If position feedback is lost for 750 ms during playback, or boundary timing is unavailable, CueX sends Stop and does not automatically cue another song. A missing stop acknowledgement also prevents automatic cueing. Save timeline and tempo changes in Logic, then reload CueX before using the programmed stops.
 
