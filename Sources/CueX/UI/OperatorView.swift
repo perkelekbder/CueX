@@ -321,6 +321,20 @@ struct OperatorView: View {
                 }
                 .disabled(previousSection == nil || !model.midiController.isReady)
                 .help("Previous song (↑)")
+                Button { model.midiController.toggleCycle() } label: {
+                    Label("Toggle Cycle", systemImage: "repeat")
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .frame(maxWidth: .infinity, minHeight: 30)
+                }
+                .buttonStyle(LogicButtonStyle(
+                    tint: model.midiController.isCycling == true ? LogicTheme.amber : nil,
+                    foreground: model.midiController.isCycling == true ? LogicTheme.background : LogicTheme.text
+                ))
+                .disabled(!model.midiController.isReady || model.midiController.connectionHealth == .logicClosed)
+                .accessibilityLabel("Toggle Cycle")
+                .accessibilityValue(cycleStateLabel)
+                .help("\(cycleStateLabel) · Toggles Logic’s existing cycle range; color follows Logic’s feedback.")
                 Button {
                     if let nextSection { selectedSectionID = nextSection.id }
                 } label: {
@@ -429,6 +443,14 @@ struct OperatorView: View {
               let index = sections.firstIndex(where: { $0.id == selectedSectionID }),
               sections.indices.contains(index + offset) else { return nil }
         return sections[index + offset]
+    }
+
+    private var cycleStateLabel: String {
+        switch model.midiController.isCycling {
+        case .some(true): "Cycle on"
+        case .some(false): "Cycle off"
+        case .none: "Cycle status unknown · Waiting for Logic"
+        }
     }
 
     private var transportStateLabel: String {

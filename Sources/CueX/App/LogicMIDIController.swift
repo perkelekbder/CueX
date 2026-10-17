@@ -15,8 +15,10 @@ private func inspectMIDIEvent(_ context: UnsafeMutableRawPointer?, _ timestamp: 
     let voice = message.channelVoice1
     let updates = context.assumingMemoryBound(to: [MackieFeedbackEvent].self)
     if voice.status == .noteOn, voice.channel == 0,
-       [0x5E, 0x71, 0x72].contains(voice.note.number) {
+       [0x56, 0x5E, 0x71, 0x72].contains(voice.note.number) {
         updates.pointee.append(.note(number: voice.note.number, value: voice.note.velocity))
+    } else if voice.status == .noteOff, voice.channel == 0, voice.note.number == 0x56 {
+        updates.pointee.append(.note(number: 0x56, value: 0))
     } else if voice.status == .controlChange, [0, 15].contains(voice.channel),
               (0x40...0x49).contains(voice.controlChange.index) {
         updates.pointee.append(.display(index: Int(voice.controlChange.index - 0x40), value: voice.controlChange.data))
@@ -52,6 +54,7 @@ final class LogicMIDIController {
     @ObservationIgnored private var connectionMonitorTask: Task<Void, Never>?
     @ObservationIgnored private var logicProcessID: pid_t?
     private(set) var isPlaying: Bool?
+    private(set) var isCycling: Bool?
     private(set) var position: MackieClockPosition?
     private(set) var clockMode: MackieClockMode = .unknown
     private(set) var positionReceivedAt: ContinuousClock.Instant?
@@ -112,6 +115,13 @@ final class LogicMIDIController {
         recordTransportRequest(playing: true, result: result, sentAt: sentAt)
     }
 
+    func toggleCycle() {
+        let result = sendMackieButton(note: 0x56)
+        recordSendResult(result, operation: "Couldn’t toggle Cycle")
+        if result == noErr { status = "Cycle toggle sent · Waiting for Logic feedback" }
+        // Only Logic's Cycle LED feedback changes isCycling; never guess or retry a toggle.
+    }
+
     func stop() {
         let sentAt = ContinuousClock.now
         let result = sendMackieButton(note: 0x5D)
@@ -149,6 +159,9 @@ final class LogicMIDIController {
                     self.pendingTransport = nil
                 }
                 transportChanged = true
+            } else if case let .note(number: 0x56, value: value) = update {
+                isCycling = value > 0
+                // Cycle LED updates must not masquerade as new playhead feedback.
             } else {
                 if case .display = update { lastClockFeedbackAt = receivedAt }
                 positionDecoder.consume(update)
@@ -307,6 +320,7 @@ final class LogicMIDIController {
             playbackBeganAt = nil
             pendingTransport = nil
             lastConfirmedTransport = nil
+            isCycling = nil
             lastSendError = nil
             if hadLogicSession {
                 // Old LEDs and clock values must not describe a restarted Logic.

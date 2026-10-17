@@ -82,6 +82,11 @@ Click it for details and connection instructions.
 Click the CueX window, then use **Space** for Play/Stop and **↑ / ↓** to select the previous or next enabled row; Space also cancels a pause countdown or pending automatic restart.
 These shortcuts leave text editing, open dialogs, and other apps alone.
 
+## Cycle
+
+Click **Toggle Cycle** between Previous and Next to turn Logic’s existing cycle range on or off.
+The button turns amber when Logic confirms Cycle is on and gray when off, including changes made in Logic; hover to check whether the state is still unknown while waiting for feedback.
+
 ## Copy setlist
 
 Choose **Edit → Copy** or press **⌘C** to copy plain text with one song name per line and `----` for each pause, excluding Full Stop and everything after it.

@@ -25,12 +25,13 @@ enum LogicTheme {
 struct LogicButtonStyle: ButtonStyle {
     var tint: Color?
     var cornerRadius: CGFloat = 8
+    var foreground: Color = LogicTheme.text
     @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius)
         configuration.label
-            .foregroundStyle(LogicTheme.text)
+            .foregroundStyle(foreground)
             .background {
                 shape.fill(LinearGradient(
                     colors: tint.map { [$0, $0.opacity(0.8)] }
