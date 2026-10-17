@@ -37,9 +37,11 @@ struct MackiePositionDecoder {
         }
     }
 
+    // Bar 000 is valid on the display at absolute bars 1000, 2000, etc.
+    // LogicMIDIController resolves these raw digits using the last cue/position.
     var position: MackieClockPosition? {
         guard mode == .beats,
-              let bar = number(in: 0..<3), bar > 0,
+              let bar = number(in: 0..<3), bar >= 0,
               let beat = number(in: 3..<5), beat > 0,
               let division = number(in: 5..<7), division > 0,
               let tick = number(in: 7..<10), tick > 0 else { return nil }

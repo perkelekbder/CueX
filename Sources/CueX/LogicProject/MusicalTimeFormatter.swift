@@ -22,6 +22,11 @@ enum MusicalTimeFormatter {
         return tick..<(tick + current.beatTicks)
     }
 
+    static func barNumber(tick: Int, signatures: [TimeSignature]) -> Int? {
+        guard tick >= 0 else { return nil }
+        return musicalPosition(tick: tick, signatures: signatures)?.bar
+    }
+
     static func position(tick: Int, signatures: [TimeSignature]) -> String {
         guard tick >= 0, let position = musicalPosition(tick: tick, signatures: signatures) else {
             return "—"

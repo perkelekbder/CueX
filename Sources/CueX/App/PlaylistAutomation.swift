@@ -150,7 +150,8 @@ final class PlaylistAutomation {
 
     private func sendLocate(_ section: ArrangementSection, in project: ImportedLogicProject) -> Bool {
         let sentAt = ContinuousClock.now
-        guard midi.locate(tick: section.startTick, tempoChanges: project.tempoChanges, frameRate: project.timecodeFrameRate) else { return false }
+        guard midi.locate(tick: section.startTick, tempoChanges: project.tempoChanges, frameRate: project.timecodeFrameRate,
+                          timeSignatures: project.timeSignatures) else { return false }
         projectStartGuard.didLocate(tick: section.startTick, sentAt: sentAt)
         lastLocateSentAt = sentAt
         return true

@@ -70,7 +70,7 @@ If Logic does not move to the selected song, go back to step 3 and check that **
 ## Project compatibility
 
 Song jumping currently expects bar 1 at timecode `01:00:00:00` and a saved frame rate of 24, 25, or 30 fps without drop-frame timecode.
-Other timecode start positions and frame rates are not yet supported.
+Other timecode start positions and frame rates are not yet supported; beyond bar 999, cue a song from CueX to anchor the full bar number, because Logic’s three-digit Mackie display cannot identify large manual jumps between thousand-bar ranges.
 
 ## Connection health
 

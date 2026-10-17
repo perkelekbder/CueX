@@ -60,6 +60,9 @@ final class LogicMIDIController {
     private(set) var positionReceivedAt: ContinuousClock.Instant?
     @ObservationIgnored var onFeedback: (@MainActor () -> Void)?
     @ObservationIgnored private var positionDecoder = MackiePositionDecoder()
+    @ObservationIgnored private var barTracker = MackieBarTracker()
+    @ObservationIgnored private var pendingLocate: (bar: Int, sentAt: ContinuousClock.Instant)?
+    @ObservationIgnored private var locateConfirmationTask: Task<Void, Never>?
     @ObservationIgnored private var positionUpdateTask: Task<Void, Never>?
     private var client = MIDIClientRef()
     private var source = MIDIEndpointRef()
@@ -178,17 +181,40 @@ final class LogicMIDIController {
             do { try await Task.sleep(for: .milliseconds(15)) } catch { return }
             guard let self else { return }
             self.clockMode = self.positionDecoder.mode
-            self.position = self.positionDecoder.position
-            self.positionReceivedAt = receivedAt
-            self.onFeedback?()
+            self.publishPosition(receivedAt: receivedAt)
         }
     }
 
+    private func publishPosition(receivedAt: ContinuousClock.Instant) {
+        if let pendingLocate, receivedAt <= pendingLocate.sentAt { return }
+        guard let raw = positionDecoder.position, let resolved = barTracker.resolved(raw) else {
+            position = nil
+            positionReceivedAt = receivedAt
+            onFeedback?()
+            return
+        }
+        if let pendingLocate {
+            // A fresh packet can still describe the previous position while
+            // Logic processes MMC. Do not let it replace the requested row.
+            guard resolved.bar == pendingLocate.bar || resolved.bar == pendingLocate.bar + 1 else { return }
+            self.pendingLocate = nil
+            locateConfirmationTask?.cancel()
+        }
+        barTracker.accept(resolved)
+        position = resolved
+        positionReceivedAt = receivedAt
+        onFeedback?()
+    }
+
     @discardableResult
-    func locate(tick: Int, tempoChanges: [TempoChange], frameRate: Int?) -> Bool {
+    func locate(tick: Int, tempoChanges: [TempoChange], frameRate: Int?, timeSignatures: [TimeSignature]) -> Bool {
         guard source != 0 else { return false }
         guard let frameRate, [24, 25, 30].contains(frameRate) else {
             status = "Can’t locate: saved project frame rate is unsupported or unavailable"
+            return false
+        }
+        guard let targetBar = MusicalTimeFormatter.barNumber(tick: tick, signatures: timeSignatures) else {
+            status = "Can’t locate: saved meter map is unavailable"
             return false
         }
         guard let elapsed = Self.elapsedSeconds(at: tick, tempoChanges: tempoChanges) else {
@@ -216,6 +242,19 @@ final class LogicMIDIController {
             timecodeHour, UInt8(minute), UInt8(second), UInt8(frame), 0x00, 0xF7
         ])
         recordSendResult(result, operation: "Couldn’t send locate")
+        if result == noErr {
+            barTracker.didLocate(bar: targetBar)
+            pendingLocate = (targetBar, .now)
+            position = nil
+            positionReceivedAt = nil
+            locateConfirmationTask?.cancel()
+            locateConfirmationTask = Task { @MainActor [weak self] in
+                do { try await Task.sleep(for: .seconds(2)) } catch { return }
+                guard let self, self.pendingLocate != nil else { return }
+                self.pendingLocate = nil
+                self.status = "Position unknown · Logic didn’t confirm the cue"
+            }
+        }
         status = result == noErr
             ? "Locate sent · \(frameRate) fps"
             : Self.errorText("Couldn’t send locate", code: result)
@@ -330,6 +369,9 @@ final class LogicMIDIController {
                 positionReceivedAt = nil
                 clockMode = .unknown
                 positionDecoder = MackiePositionDecoder()
+                barTracker = MackieBarTracker()
+                pendingLocate = nil
+                locateConfirmationTask?.cancel()
                 onFeedback?()
             }
         }
