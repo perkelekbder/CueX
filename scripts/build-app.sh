@@ -26,6 +26,18 @@ app_bundle="$snapshot_dir/CueX.app"
 mkdir -p "$app_bundle/Contents/MacOS"
 cp "$binary_dir/CueX" "$app_bundle/Contents/MacOS/CueX"
 
+# Generate native and Retina icon sizes from the original artwork.
+iconset="$snapshot_dir/CueX.iconset"
+mkdir -p "$iconset" "$app_bundle/Contents/Resources"
+for size in 16 32 128 256 512; do
+    retina_size=$((size * 2))
+    sips -z "$size" "$size" "$project_dir/Assets/AppIcon.png" \
+        --out "$iconset/icon_${size}x${size}.png" >/dev/null
+    sips -z "$retina_size" "$retina_size" "$project_dir/Assets/AppIcon.png" \
+        --out "$iconset/icon_${size}x${size}@2x.png" >/dev/null
+done
+iconutil -c icns "$iconset" -o "$app_bundle/Contents/Resources/CueX.icns"
+
 cat > "$app_bundle/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -37,6 +49,7 @@ cat > "$app_bundle/Contents/Info.plist" <<'PLIST'
     <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
     <key>CFBundleName</key><string>CueX</string>
     <key>CFBundleDisplayName</key><string>CueX</string>
+    <key>CFBundleIconFile</key><string>CueX.icns</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>0.1.0</string>
     <key>CFBundleVersion</key><string>1</string>

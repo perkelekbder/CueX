@@ -145,7 +145,7 @@ Full Stop always ends the set, and automatic control requires CueX to remain ope
 ## Build and run
 
 Building from source requires macOS 14 or newer and Xcode 16 or newer, opened once to finish setup.
-Run `./scripts/build-app.sh` from the project folder to create the app and ZIP under `Builds/`, then quit any older CueX before opening the new app.
+Run `./scripts/build-app.sh` from the project folder to create the app with CueX’s custom icon and a ZIP under `Builds/`, then quit any older CueX before opening the new app.
 
 ## Share with friends
 
