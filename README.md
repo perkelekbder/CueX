@@ -17,7 +17,7 @@ CueX is a native macOS show-control app for Logic Pro playback projects.
 - Send Play/Stop through Mackie Control and show Logic's actual playback state
 - Locate selected sections through MMC, using the saved tempo map and frame rate
 - Display live bars/beats from Logic and mark the current section independently of selection
-- Show current-song progress in the footer; hover to see remaining bars/beats
+- Show live progress inside the selected song row; hover to see remaining bars/beats
 - Step through selected songs with Previous Song / Next Song, locate them, and bring their notes into view
 - Drag and drop songs and custom pause/full-stop blocks in CueX, saving order on this Mac without modifying Logic
 - Save a Stop After setting for each song; a permanent, movable Full Stop block ends the set
@@ -119,7 +119,7 @@ Its Stop box stays locked on, and everything below it is grayed out, blocked fro
 
 ## Song and setlist duration
 
-Song rows show their lengths, the footer shows the total, and the large numbers at the top show remaining time and estimated finish using Logic's saved tempo changes and including scheduled pauses up to Full Stop.
+Song rows show their lengths and the selected song's progress bar, while the large numbers at the top show remaining time and estimated finish using Logic's saved tempo changes and including scheduled pauses up to Full Stop.
 Durations use `MM:SS` or `HH:MM:SS` for an hour or more, while the finish clock omits seconds and assumes no extra manual waits or transition delays.
 
 ## Detect saves in Logic

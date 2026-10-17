@@ -90,6 +90,7 @@ struct OperatorView: View {
             } label: {
                 Text(model.project == nil ? "Open setlist" : model.setlistTitle)
                     .font(.headline)
+                    .foregroundStyle(.white)
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -98,7 +99,9 @@ struct OperatorView: View {
             Menu {
                 Button("Add Pause") { model.addPause(after: selectedSectionID) }
             } label: {
-                Image(systemName: "plus.circle").frame(width: 28, height: 28)
+                Image(systemName: "plus.circle")
+                    .foregroundStyle(.white)
+                    .frame(width: 28, height: 28)
             }
             .menuStyle(.borderlessButton)
             .fixedSize()
@@ -106,6 +109,7 @@ struct OperatorView: View {
             .help("Add a pause after the selected row, then drag it into place")
             Button { model.saveSetlist() } label: {
                 Image(systemName: "square.and.arrow.down")
+                    .foregroundStyle(.white)
                     .frame(width: 28, height: 28)
             }
             .buttonStyle(.borderless)
@@ -114,6 +118,8 @@ struct OperatorView: View {
         }
         .padding(.horizontal, 14)
         .frame(height: 46)
+        .tint(.white)
+        .foregroundStyle(.white)
         .background(LogicTheme.toolbar)
     }
 
@@ -223,6 +229,8 @@ struct OperatorView: View {
     }
 
     private func songRow(_ section: ArrangementSection, index: Int, project: ImportedLogicProject) -> some View {
+        let progress: SongProgress? = selectedSectionID == section.id
+            ? model.songProgress.flatMap { $0.section.id == section.id ? $0 : nil } : nil
         return HStack(spacing: 10) {
             Text(String(format: "%02d", index + 1))
                 .font(.caption.monospacedDigit())
@@ -268,6 +276,18 @@ struct OperatorView: View {
             .help("Stop after this song and cue the next song ready for Play. Full Stop always ends the set.")
         }
         .frame(height: 48)
+        .overlay(alignment: .bottom) {
+            if selectedSectionID == section.id, !project.isExcluded(section.id) {
+                ProgressView(value: progress?.fraction ?? 0)
+                    .progressViewStyle(.linear)
+                    .tint(model.midiController.isPlaying == true ? LogicTheme.green : LogicTheme.blue)
+                    .padding(.horizontal, 4)
+                    .accessibilityLabel("\(section.name) progress")
+                    .accessibilityValue(progress.map { "\($0.percentage)%" } ?? "Waiting for song position")
+                    .help(progress.map { "\($0.percentage)% · \($0.remainingDescription) remaining" }
+                          ?? "Waiting for this song’s position from Logic")
+            }
+        }
         .contentShape(Rectangle())
     }
 
@@ -338,8 +358,7 @@ struct OperatorView: View {
     }
 
     private var statusFooter: some View {
-        let progress = model.songProgress
-        return VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 5) {
             LogicConnectionIndicator(midi: model.midiController)
             HStack(spacing: 6) {
                 Text(transportStateLabel)
@@ -354,22 +373,6 @@ struct OperatorView: View {
             }
             .font(.caption)
             .lineLimit(1)
-            HStack {
-                Text(model.activeSection?.name ?? "No current song")
-                    .lineLimit(1)
-                Spacer(minLength: 8)
-                Text(progress.map { "\($0.percentage)%" } ?? "—")
-                    .monospacedDigit()
-                    .frame(width: 36, alignment: .trailing)
-            }
-            .font(.caption)
-            ProgressView(value: progress?.fraction ?? 0)
-                .tint(model.midiController.isPlaying == true ? LogicTheme.green : LogicTheme.blue)
-                .accessibilityLabel("Song progress")
-                .help(progress.map { "\($0.remainingDescription) remaining" } ?? "Waiting for song position")
-            Text("Set \(model.setlistDurationLabel)")
-                .font(.caption2.monospacedDigit())
-                .help("Total song and pause time up to the first full stop. Excludes timeline gaps, manual waits, and transition delays.")
             if let notice = model.projectChangeNotice {
                 Button { model.handleProjectChangeNotice() } label: {
                     HStack(spacing: 5) {
@@ -384,15 +387,10 @@ struct OperatorView: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(model.hasPendingProjectReload ? LogicTheme.amber : LogicTheme.secondaryText)
                 .help(notice + (model.hasPendingProjectReload ? "\nReloads automatically once stopped. Click to retry while stopped." : "\nClick to dismiss."))
-            } else {
-                Text(model.playlistAutomation.status)
-                    .font(.caption2)
-                    .lineLimit(1)
-                    .help("\(model.playlistAutomation.status)\n\(model.midiController.status)" + (progress.map { "\n\($0.remainingDescription) remaining" } ?? ""))
             }
         }
         .foregroundStyle(LogicTheme.secondaryText)
-        .frame(height: 110, alignment: .topLeading)
+        .frame(height: 52, alignment: .topLeading)
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .background(LogicTheme.footer)
