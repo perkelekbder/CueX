@@ -17,7 +17,7 @@ enum ProjectReloadMerger {
         // Preserve moved songs by unique name, then renamed songs by position.
         // Ambiguous changes remain unmatched instead of borrowing another note.
         for matchByName in [true, false] {
-            let oldGroups = Dictionary(grouping: previous.sections.filter { matches[$0.id] == nil }) {
+            let oldGroups = Dictionary(grouping: previous.songs.filter { matches[$0.id] == nil }) {
                 matchByName ? $0.name.trimmingCharacters(in: .whitespacesAndNewlines) : String($0.startTick)
             }
             let newGroups = Dictionary(grouping: imported.sections.filter { !usedNewIDs.contains($0.id) }) {
@@ -31,6 +31,7 @@ enum ProjectReloadMerger {
         }
         var result = imported
         result.sections = previous.sections.compactMap { old in
+            if !old.isSong { return old }
             guard let newID = matches[old.id] else { return nil }
             return imported.sections.first { $0.id == newID }
         } + imported.sections.filter { !usedNewIDs.contains($0.id) }

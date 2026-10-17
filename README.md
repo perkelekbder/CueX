@@ -18,7 +18,7 @@ CueX is a native macOS show-control app for Logic Pro playback projects.
 - Display live bars/beats from Logic and mark the current section independently of selection
 - Show current-song progress in the footer; hover to see remaining bars/beats
 - Step through selected songs with Previous Song / Next Song, locate them, and bring their notes into view
-- Drag and drop songs in CueX, saving order on this Mac without modifying Logic
+- Drag and drop songs and custom pause/full-stop blocks in CueX, saving order on this Mac without modifying Logic
 - Save a Stop After setting for each song; the final song is always locked on
 - After an automatic stop is acknowledged by Logic, select and cue the next song ready for Play
 
@@ -57,7 +57,7 @@ Shortcuts are inactive while editing notes or another text field, while a dialog
 
 Use the window’s Setlist menu or the File menu:
 
-- **Save Setlist** (`⌘S`) saves the current order, operator notes, and Stop After settings to a `.cuex.json` file. Later saves update that file.
+- **Save Setlist** (`⌘S`) saves the current order, custom blocks, operator notes, and Stop After settings to a `.cuex.json` file. Later saves update that file.
 - **Save Setlist As** (`⇧⌘S`) creates another named version, so multiple setlists can use the same Logic project.
 - **Open Setlist** (`⌘O`) restores a saved version while playback is stopped.
 - **Open Recent** in the File and Setlist menus remembers the last ten successfully opened or saved setlists across launches. Most recent comes first. Clear Menu removes this history without deleting files. Missing files show an error and can be located with Open Setlist.
@@ -70,19 +70,28 @@ Song matching uses imported section names and start positions. If sections were 
 
 ## Arrange the CueX setlist
 
-Drag a song row to its new position while playback is stopped. Reordering preserves the selected song and does not change Logic’s arrangement. Previous Song / Next Song follow the CueX order. The order is restored on reload; newly imported sections are appended and removed sections are dropped. Notes and stop settings stay attached to their songs. The locked final stop follows the last row in CueX.
+Drag a song row to its new position while playback is stopped. Reordering preserves the selected song and does not change Logic’s arrangement. Previous Song / Next Song follow the CueX order. The order is restored on reload; newly imported sections are appended and removed sections are dropped. Notes and stop settings stay attached to their songs. The locked final song stop follows the playable end of CueX’s setlist; a full-stop block can end the set earlier.
 
 Unchecked songs continue naturally when the next setlist song starts exactly at the current song’s end in Logic. Otherwise CueX stops at the boundary, waits for stopped feedback, locates the next song, and resumes only after fresh position feedback confirms that song. These jumps can introduce a brief gap; they are not gapless transitions. A failed locate or a missing position confirmation leaves playback stopped. CueX’s Stop button cancels a pending automatic restart.
 
+## Custom setlist blocks
+
+Use the **+** menu beside the setlist title to add a **Pause** or **Full Stop** after the selected row. Drag blocks just like songs to place them anywhere, including before the first song or after the last. Right-click a block to remove it. Blocks are stored in both the local working copy and portable `.cuex.json` files, and survive Logic project reloads. Existing version 1 setlists still open; new saves use version 2 and require this version of CueX or newer.
+
+- **Pause:** click its seconds/pencil button to choose 1–86,400 seconds (default 30). At the preceding song’s end, CueX waits for Logic to confirm Stop, counts down, then locates and starts the next song only after fresh position feedback confirms the cue. A pause overrides the preceding song’s ordinary Stop setting so the sequence resumes automatically. Consecutive pauses run in order. A leading pause starts when you select it and press Play; a trailing pause finishes the set after its countdown. Stop or Space cancels a running countdown; Play restarts that pause from its full configured duration. Selecting another enabled row also cancels the countdown.
+- **Full Stop:** its Stop checkbox is always checked and locked. Playback ends here, with no automatic cue beyond it. Rows after the first full stop are grayed out, excluded from total/remaining/finish timing, skipped by Previous/Next, and cannot be cued or played from CueX. Drag them above the block or move/remove the block to enable them again. The block itself has zero duration. If multiple full stops exist, the first one ends the set.
+
+CueX also sends Stop if Logic reports playback in an excluded song or restarts after the set has finished. These controls require CueX running and working MIDI communication; they do not change Logic’s arrangement or disable Logic’s own controls.
+
 ## Song and setlist duration
 
-Each song row shows its duration. The footer shows **Set**, the sum of the songs in CueX, **Remaining**, and the estimated finish time. Durations integrate the saved tempo changes across each song’s start and end ticks. They refresh when the project is imported or reloaded after a Logic save.
+Each song row shows its duration. The footer shows **Set**, the sum of enabled songs and scheduled pauses. Large **Remaining** and estimated finish readouts sit above the setlist. Durations integrate the saved tempo changes across each song’s start and end ticks. They refresh when the project is imported or reloaded after a Logic save.
 
-The total excludes gaps in Logic’s timeline, time waiting at programmed stops, and the brief delays of MIDI-controlled jumps. Songs are summed before rounding the total to the nearest second; row durations are also rounded to the nearest second. Durations shorter than an hour use `MM:SS`; durations of one hour or longer use `HH:MM:SS`, for example `01:15:30`. The same formatting applies to song durations, the total, and remaining time. If a song has no usable tempo map, its duration and the total show `—` instead of assuming a tempo or showing a partial total.
+The total includes scheduled pause blocks and ends at the first full-stop block. It excludes gaps in Logic’s timeline, manual waits at song Stop checkboxes, and the brief delays of MIDI-controlled jumps. Songs are summed before rounding the total to the nearest second; row durations are also rounded to the nearest second. Durations shorter than an hour use `MM:SS`; durations of one hour or longer use `HH:MM:SS`, for example `01:15:30`. The same formatting applies to song durations, the total, and remaining time. If a song has no usable tempo map, its duration and the total show `—` instead of assuming a tempo or showing a partial total.
 
-Remaining time is the current song’s unplayed duration plus the later songs in CueX order. It follows Logic’s reported beat, so paused playback leaves it unchanged. Without a reported position, the selected song is treated as the starting point; missing live position during playback shows `—`. Timeline gaps add no time. After Logic acknowledges the final automatic stop, remaining becomes zero and the finish time is held at the actual stop acknowledgement.
+Remaining time is the current song’s unplayed duration plus later enabled songs and pause blocks in CueX order. During a scheduled pause, its unelapsed seconds count down using a monotonic clock. Rows after the first full stop contribute no time. It follows Logic’s reported beat, so paused playback leaves it unchanged. Without a reported position, the selected song is treated as the starting point; missing live position during playback shows `—`. Timeline gaps add no time. After Logic acknowledges the final automatic stop, remaining becomes zero and the finish time is held at the actual stop acknowledgement.
 
-The finish time uses local `HH:mm` without seconds. **Est. finish** assumes uninterrupted remaining playback; waiting at programmed stops or manual pauses moves it later. While stopped it is labeled **Finish if resumed now**. Missing tempo data or lost live playback feedback makes the estimate unavailable. Hover over the time to see its date, including when a set crosses midnight.
+The finish time uses local `HH:mm` without seconds. **Est. finish** assumes uninterrupted remaining playback; waiting at programmed stops or manual pauses moves it later. While stopped it is labeled **Finish if resumed now**, except during a running scheduled pause, when it stays **Est. finish**. Missing tempo data or lost live playback feedback makes the estimate unavailable. Hover over the time to see its date, including when a set crosses midnight.
 
 ## Detect saves in Logic
 
@@ -90,7 +99,7 @@ CueX monitors the linked project’s saved `ProjectData` and frame-rate metadata
 
 After Logic saves, a warning appears in the footer before CueX reloads the project. During playback or an automatic transition, the warning stays visible and reloading waits until playback stops. Starting playback is disabled while a reload is pending; Stop remains available. After reloading, click the footer notice to dismiss it. If the project is temporarily unavailable or cannot be read, CueX keeps the previous imported state and offers retry from the footer.
 
-Reloading preserves CueX order, notes, stop settings, and selection for matching songs. Exact section matches are kept first; moved songs can match by unique name, and renamed songs by an unambiguous start position. Unmatched new songs are appended in Logic timeline order, and removed songs leave the list. Orphaned notes and stop settings remain in the local working copy. Ambiguous edits cannot be matched automatically. Reloading does not send a locate or start playback. Save the setlist file again to keep changes to its song list.
+Reloading preserves CueX order, custom blocks, notes, stop settings, and selection for matching songs. Exact section matches are kept first; moved songs can match by unique name, and renamed songs by an unambiguous start position. Unmatched new songs are appended in Logic timeline order, and removed songs leave the list. Orphaned notes and stop settings remain in the local working copy. Ambiguous edits cannot be matched automatically. Reloading does not send a locate or start playback. Save the setlist file again to keep changes to its song list.
 
 ## Stop and return to the setlist start
 

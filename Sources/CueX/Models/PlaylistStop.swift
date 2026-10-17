@@ -10,22 +10,32 @@ struct PlaylistStopBoundary: Equatable {
 
 enum PlaylistStopPolicy {
     static func isEnabled(for section: ArrangementSection, in project: ImportedLogicProject, savedIDs: Set<String>) -> Bool {
-        section.id == project.sections.last?.id || savedIDs.contains(section.id)
+        section.isFullStop || section.id == project.playableEntries.last?.id
+            || savedIDs.contains(section.id)
     }
 
     static func nextBoundary(from tick: Int, project: ImportedLogicProject, savedIDs: Set<String>) -> PlaylistStopBoundary? {
         // Find the physical song first, then follow CueX order only while the
         // next song starts exactly where the current one ends in Logic.
-        let physical = project.sections.sorted { $0.startTick < $1.startTick }
+        let physical = project.songs.sorted { $0.startTick < $1.startTick }
         guard let current = physical.last(where: { $0.startTick <= tick && $0.startTick + $0.lengthTicks > tick })
                 ?? physical.first(where: { $0.startTick > tick })
                 ?? physical.last,
               var index = project.sections.firstIndex(where: { $0.id == current.id }) else { return nil }
+        if project.isExcluded(current.id) {
+            return PlaylistStopBoundary(sectionID: current.id, sectionName: current.name,
+                                        endTick: tick, nextSectionID: nil)
+        }
         while true {
             let section = project.sections[index]
-            let stop = isEnabled(for: section, in: project, savedIDs: savedIDs)
+            let next = project.sections.dropFirst(index + 1).first
+            // A scheduled pause always resumes automatically, even when the
+            // preceding song had its ordinary Stop option enabled.
+            let stop = next?.block?.kind == .pause ? false
+                : isEnabled(for: section, in: project, savedIDs: savedIDs)
             let nextIndex = index + 1
             let contiguous = project.sections.indices.contains(nextIndex)
+                && project.sections[nextIndex].isSong
                 && project.sections[nextIndex].startTick == section.startTick + section.lengthTicks
             if stop || !contiguous {
                 var result = boundary(index: index, project: project)

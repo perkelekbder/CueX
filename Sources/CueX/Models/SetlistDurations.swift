@@ -10,16 +10,23 @@ struct SetlistDurations {
         var durations: [String: Double] = [:]
         var total = 0.0
         var complete = true
+        let includedIDs = Set(project.playableEntries.map(\.id))
         for section in project.sections {
+            if let block = section.block {
+                let seconds = Double(block.seconds)
+                durations[section.id] = seconds
+                if includedIDs.contains(section.id) { total += seconds }
+                continue
+            }
             let (end, overflow) = section.startTick.addingReportingOverflow(section.lengthTicks)
             guard !overflow, section.lengthTicks >= 0,
                   let seconds = MusicalTimeline.seconds(from: section.startTick, to: end, tempos: project.tempoChanges),
                   seconds.isFinite, seconds >= 0 else {
-                complete = false
+                if includedIDs.contains(section.id) { complete = false }
                 continue
             }
             durations[section.id] = seconds
-            total += seconds
+            if includedIDs.contains(section.id) { total += seconds }
         }
         songSeconds = durations
         // Round only for display, after adding the unrounded song durations.

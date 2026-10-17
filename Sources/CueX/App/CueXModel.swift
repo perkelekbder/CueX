@@ -37,7 +37,7 @@ final class CueXModel {
     }
 
     func setStopsAfter(_ enabled: Bool, for section: ArrangementSection) {
-        guard let project, section.id != project.sections.last?.id else { return }
+        guard let project, section.isSong, section.id != project.playableEntries.last?.id else { return }
         var updated = stopAfterSongIDs
         if enabled { updated.insert(section.id) } else { updated.remove(section.id) }
         do {
@@ -60,6 +60,21 @@ final class CueXModel {
     func remainingSetSeconds(fallbackSectionID: String?) -> Double? {
         guard let project, let setlistDurations else { return nil }
         if playlistAutomation.setFinishedAt != nil { return 0 }
+        if let pauseID = playlistAutomation.pauseSectionID,
+           let index = project.sections.firstIndex(where: { $0.id == pauseID }),
+           let pauseRemaining = playlistAutomation.pauseRemainingSeconds,
+           let later = RemainingSetTime.sum(from: index + 1, project: project, durations: setlistDurations) {
+            return pauseRemaining + later
+        }
+        if let cueingID = playlistAutomation.cueingSectionID,
+           let index = project.sections.firstIndex(where: { $0.id == cueingID }) {
+            return RemainingSetTime.sum(from: index, project: project, durations: setlistDurations)
+        }
+        if midiController.isPlaying != true,
+           let index = project.sections.firstIndex(where: { $0.id == (playlistAutomation.armedSectionID ?? fallbackSectionID) }),
+           !project.sections[index].isSong {
+            return RemainingSetTime.sum(from: index, project: project, durations: setlistDurations)
+        }
         // Do not substitute a selected song for missing live playback position.
         if midiController.isPlaying == true, midiController.position == nil { return nil }
         return RemainingSetTime.seconds(project: project, durations: setlistDurations,
@@ -74,12 +89,17 @@ final class CueXModel {
     }
 
     var activeSection: ArrangementSection? {
+        if midiController.isPlaying != true,
+           let armed = project?.sections.first(where: { $0.id == playlistAutomation.armedSectionID }),
+           !armed.isSong { return armed }
         guard let position = midiController.position else { return nil }
         return project?.section(at: position)
     }
 
     var songProgress: SongProgress? {
-        guard let project, let position = midiController.position else { return nil }
+        guard playlistAutomation.pauseSectionID == nil,
+              activeSection?.isSong != false,
+              let project, let position = midiController.position else { return nil }
         return SongProgress(project: project, position: position)
     }
 
@@ -133,13 +153,15 @@ final class CueXModel {
                 if let note = notes.removeValue(forKey: oldID) { notes[newID] = note }
                 if stops.remove(oldID) != nil { stops.insert(newID) }
             }
-            try notesStore.saveConfiguration(notes: notes, stops: stops, order: restored.sections.map(\.id), for: url)
+            try notesStore.saveConfiguration(notes: notes, stops: stops, order: restored.sections.map(\.id), blocks: restored.sections.filter { !$0.isSong }, for: url)
         } else {
             let order = try notesStore.loadSectionOrder(for: url)
+            let blocks = try notesStore.loadCustomBlocks(for: url)
+            let available = imported.sections + blocks
             var seen = Set<String>()
             restored.sections = order.compactMap { id in
                 guard seen.insert(id).inserted else { return nil }
-                return imported.sections.first { $0.id == id }
+                return available.first { $0.id == id }
             } + imported.sections.filter { !seen.contains($0.id) }
             notes = try notesStore.load(for: url)
             stops = try notesStore.loadStopAfterSongIDs(for: url)
@@ -227,7 +249,9 @@ final class CueXModel {
     var hasPendingProjectReload: Bool { pendingSnapshot != nil || projectUnavailable }
 
     var canStartPlayback: Bool {
-        midiController.isReady && !playlistAutomation.isTransitioning && !hasPendingProjectReload
+        let armed = project?.sections.first { $0.id == playlistAutomation.armedSectionID }
+        return midiController.isReady && !playlistAutomation.isTransitioning && !hasPendingProjectReload
+            && armed.map { project?.canCue($0) == true } != false
     }
 
     func handleProjectChangeNotice() {
@@ -250,8 +274,36 @@ final class CueXModel {
         let insertionIndex = destination - source.filter { $0 < destination }.count
         updated.sections.insert(contentsOf: moving, at: insertionIndex)
         guard updated.sections != project?.sections else { return }
+        saveSetlistOrder(updated)
+    }
+
+    func addBlock(_ kind: SetlistBlock.Kind, after selectedID: String?) {
+        guard canReorder, var updated = project else { return }
+        let entry = ArrangementSection(block: SetlistBlock(kind: kind, seconds: kind == .pause ? 30 : 0))
+        let index = updated.sections.firstIndex { $0.id == selectedID }.map { $0 + 1 } ?? updated.sections.count
+        updated.sections.insert(entry, at: index)
+        saveSetlistOrder(updated)
+    }
+
+    func updatePause(_ seconds: Int, for section: ArrangementSection) {
+        guard canReorder, (1...86_400).contains(seconds), var updated = project,
+              let index = updated.sections.firstIndex(where: { $0.id == section.id }),
+              updated.sections[index].block?.kind == .pause,
+              updated.sections[index].block?.seconds != seconds else { return }
+        updated.sections[index].block?.seconds = seconds
+        saveSetlistOrder(updated)
+    }
+
+    func removeBlock(_ section: ArrangementSection) {
+        guard canReorder, !section.isSong, var updated = project else { return }
+        updated.sections.removeAll { $0.id == section.id }
+        saveSetlistOrder(updated)
+    }
+
+    private func saveSetlistOrder(_ updated: ImportedLogicProject) {
         do {
-            try notesStore.saveSectionOrder(updated.sections.map(\.id), for: updated.projectURL)
+            try notesStore.saveConfiguration(notes: sectionNotes, stops: stopAfterSongIDs,
+                order: updated.sections.map(\.id), blocks: updated.sections.filter { !$0.isSong }, for: updated.projectURL)
             project = updated
             setlistDurations = SetlistDurations(project: updated)
             hasUnsavedSetlistChanges = true
@@ -292,7 +344,7 @@ final class CueXModel {
             panel.title = "Save CueX Setlist"
             panel.allowedContentTypes = [.json]
             panel.nameFieldStringValue = setlistURL?.lastPathComponent ?? "\(project.projectName).cuex.json"
-            panel.message = "Saves song order, notes, and stop settings. Keep the Logic project separately."
+            panel.message = "Saves song order, custom blocks, notes, and stop settings. Keep the Logic project separately."
             guard panel.runModal() == .OK, let url = panel.url else { return false }
             destination = url
         }
@@ -377,7 +429,7 @@ final class CueXModel {
             let linkedURL = restored.projectURL
             let stops = Set(document.stopAfterSongIDs)
             try notesStore.saveConfiguration(notes: document.notes, stops: stops,
-                order: document.sectionOrder, for: linkedURL)
+                order: document.sectionOrder, blocks: restored.sections.filter { !$0.isSong }, for: linkedURL)
             reloadedSectionIDs = [:]
             project = restored
             setlistDurations = SetlistDurations(project: restored)

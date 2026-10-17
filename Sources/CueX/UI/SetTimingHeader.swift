@@ -10,7 +10,7 @@ struct SetTimingHeader: View {
             let finish = model.estimatedSetFinish(remainingSeconds: remaining, now: context.date)
             HStack(spacing: 12) {
                 timingValue("Remaining", value: ClockDurationFormatter.string(remaining))
-                    .help("Remaining song time in CueX order. Excludes gaps, waits at stops, and transition delays. Remaining follows Logic’s reported beat; without a position it starts from the selected song.")
+                    .help("Remaining song and pause time up to the first full stop. Excludes timeline gaps, manual waits, and transition delays. Remaining follows Logic’s reported beat; without a position it starts from the selected song.")
                 timingValue(finishLabel, value: ClockDurationFormatter.clockTime(finish))
                 .help(finish.map {
                     $0.formatted(date: .abbreviated, time: .shortened)
@@ -41,6 +41,7 @@ struct SetTimingHeader: View {
 
     private var finishLabel: String {
         if model.playlistAutomation.setFinishedAt != nil { return "Finished" }
-        return model.midiController.isPlaying == true ? "Est. finish" : "Finish if resumed now"
+        return model.midiController.isPlaying == true || model.playlistAutomation.pauseSectionID != nil
+            ? "Est. finish" : "Finish if resumed now"
     }
 }

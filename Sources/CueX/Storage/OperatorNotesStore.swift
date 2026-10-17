@@ -12,6 +12,7 @@ struct OperatorNotesStore {
         var notes: [String: String]
         var stopAfterSongIDs: [String]?
         var sectionOrder: [String]?
+        var customBlocks: [ArrangementSection]?
     }
 
     func load(for projectURL: URL) throws -> [String: String] {
@@ -36,7 +37,8 @@ struct OperatorNotesStore {
             projectPath: projectURL.standardizedFileURL.path,
             notes: notes,
             stopAfterSongIDs: try loadStopAfterSongIDs(for: projectURL).sorted(),
-            sectionOrder: try loadSectionOrder(for: projectURL)
+            sectionOrder: try loadSectionOrder(for: projectURL),
+            customBlocks: try loadCustomBlocks(for: projectURL)
         )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -58,7 +60,8 @@ struct OperatorNotesStore {
         let notes = try load(for: projectURL)
         try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         let document = Document(formatVersion: 1, projectPath: projectURL.standardizedFileURL.path,
-                                notes: notes, stopAfterSongIDs: ids.sorted(), sectionOrder: try loadSectionOrder(for: projectURL))
+                                notes: notes, stopAfterSongIDs: ids.sorted(), sectionOrder: try loadSectionOrder(for: projectURL),
+                                customBlocks: try loadCustomBlocks(for: projectURL))
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         try encoder.encode(document).write(to: fileURL, options: .atomic)
@@ -80,20 +83,35 @@ struct OperatorNotesStore {
         let fileURL = try notesFileURL(for: projectURL)
         try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         let document = Document(formatVersion: 1, projectPath: projectURL.standardizedFileURL.path,
-                                notes: notes, stopAfterSongIDs: stops.sorted(), sectionOrder: ids)
+                                notes: notes, stopAfterSongIDs: stops.sorted(), sectionOrder: ids, customBlocks: try loadCustomBlocks(for: projectURL))
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         try encoder.encode(document).write(to: fileURL, options: .atomic)
     }
 
-    func saveConfiguration(notes: [String: String], stops: Set<String>, order: [String], for projectURL: URL) throws {
+    func saveConfiguration(notes: [String: String], stops: Set<String>, order: [String], blocks: [ArrangementSection], for projectURL: URL) throws {
         let fileURL = try notesFileURL(for: projectURL)
         try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         let document = Document(formatVersion: 1, projectPath: projectURL.standardizedFileURL.path,
-                                notes: notes, stopAfterSongIDs: stops.sorted(), sectionOrder: order)
+                                notes: notes, stopAfterSongIDs: stops.sorted(), sectionOrder: order, customBlocks: blocks)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         try encoder.encode(document).write(to: fileURL, options: .atomic)
+    }
+
+    func loadCustomBlocks(for projectURL: URL) throws -> [ArrangementSection] {
+        let fileURL = try notesFileURL(for: projectURL)
+        guard FileManager.default.fileExists(atPath: fileURL.path) else { return [] }
+        let document = try JSONDecoder().decode(Document.self, from: Data(contentsOf: fileURL))
+        guard document.formatVersion == 1, document.projectPath == projectURL.standardizedFileURL.path,
+              Set((document.customBlocks ?? []).map(\.id)).count == (document.customBlocks ?? []).count,
+              (document.customBlocks ?? []).allSatisfy({
+                  $0.block?.isValid == true && $0.id.hasPrefix("block|")
+                      && $0.startTick == 0 && $0.lengthTicks == 0
+              }) else {
+            throw StoreError.unsupportedNotesFile
+        }
+        return document.customBlocks ?? []
     }
 
     private func notesFileURL(for projectURL: URL) throws -> URL {

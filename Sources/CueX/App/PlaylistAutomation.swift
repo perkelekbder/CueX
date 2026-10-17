@@ -8,6 +8,17 @@ final class PlaylistAutomation {
     private(set) var armedSectionID: String?
     private(set) var setFinishedAt: Date?
     private(set) var isTransitioning = false
+    private(set) var pauseSectionID: String?
+    @ObservationIgnored private var pauseDeadline: ContinuousClock.Instant?
+    @ObservationIgnored private var pauseTask: Task<Void, Never>?
+
+    var pauseRemainingSeconds: Double? {
+        guard let pauseDeadline else { return nil }
+        let remaining = ContinuousClock.now.duration(to: pauseDeadline).components
+        return max(0, Double(remaining.seconds) + Double(remaining.attoseconds) / 1e18)
+    }
+    var cueingSectionID: String? { pendingResume?.sectionID }
+
     @ObservationIgnored private var pendingResume: (sectionID: String, sentAt: ContinuousClock.Instant)?
     @ObservationIgnored private var resumeTask: Task<Void, Never>?
     @ObservationIgnored private let midi: LogicMIDIController
@@ -56,24 +67,63 @@ final class PlaylistAutomation {
     }
 
     func manualLocate(_ section: ArrangementSection) {
-        guard let project else { return }
+        guard let project, !project.isExcluded(section.id) else { return }
         setFinishedAt = nil
         cancelResume()
         cancelRun()
         retryTask?.cancel()
         transition.reset()
         clearManualStopRequest()
-        armedSectionID = nil
+        armedSectionID = section.id
+        if !section.isSong {
+            midi.stopForPlaylist()
+            status = section.isFullStop ? "Full stop · Playback ends here" : "Ready: Pause · Press Play to start countdown"
+            return
+        }
         status = sendLocate(section, in: project) ? "Ready: \(section.name)" : "Stopped: couldn’t cue \(section.name)"
     }
 
-    func manualPlay() {
+    func manualPlay(sectionID: String? = nil) {
+        guard let project else { return }
+        let entry = project.sections.first(where: { $0.id == (sectionID ?? armedSectionID) })
+            ?? midi.position.flatMap { project.section(at: $0) }
+            ?? project.playableEntries.first
+        guard let entry, project.canCue(entry), !isTransitioning else { return }
         setFinishedAt = nil
         clearManualStopRequest()
-        midi.play()
+        if !entry.isSong {
+            guard midi.isPlaying == false else {
+                midi.stopForPlaylist()
+                status = "Stop Logic before starting a pause"
+                return
+            }
+            beginEntry(entry, automatically: true)
+        } else {
+            // A reorder/import can leave Logic at a different row. Confirm the
+            // chosen song before starting instead of playing that old position.
+            if midi.position.flatMap({ project.section(at: $0) })?.id != entry.id {
+                guard midi.isPlaying == false else {
+                    midi.stopForPlaylist()
+                    status = "Stop Logic before cueing the selected song"
+                    return
+                }
+                beginEntry(entry, automatically: true)
+            } else {
+                armedSectionID = entry.id
+                midi.play()
+            }
+        }
     }
 
     func manualStop() {
+        if pauseSectionID != nil {
+            cancelResume()
+            cancelRun()
+            clearManualStopRequest()
+            midi.stopForPlaylist()
+            status = "Pause canceled · Press Play to restart the pause"
+            return
+        }
         // The second click can precede Logic's acknowledgement of the first.
         let returnToStart = midi.isPlaying == false || manualStopAwaitingAcknowledgement
         manualStopAwaitingAcknowledgement = midi.isPlaying != false
@@ -107,6 +157,11 @@ final class PlaylistAutomation {
         retryTask?.cancel()
         transition.reset()
         clearManualStopRequest()
+        if !first.isSong {
+            armedSectionID = first.id
+            status = first.isFullStop ? "Full stop · No songs enabled" : "Ready: Pause · Setlist start"
+            return
+        }
         guard sendLocate(first, in: project) else {
             status = "Stopped: couldn’t cue the setlist start"
             return
@@ -129,7 +184,17 @@ final class PlaylistAutomation {
             status = "Waiting for Logic transport"
             return
         }
-        if midi.isPlaying == true { setFinishedAt = nil }
+        if midi.isPlaying == true {
+            if pauseSectionID != nil || setFinishedAt != nil
+                || midi.position.flatMap({ project.section(at: $0) }).map({ project.isExcluded($0.id) }) == true {
+                cancelResume()
+                cancelRun()
+                transition.reset()
+                midi.stopForPlaylist()
+                status = "Stopped: playback outside the enabled set"
+                return
+            }
+        }
         let returnedToProjectStart = projectStartGuard.observe(
             position: midi.position, receivedAt: midi.positionReceivedAt, isPlaying: midi.isPlaying)
         if midi.isPlaying == false, manualStopAwaitingAcknowledgement {
@@ -140,7 +205,7 @@ final class PlaylistAutomation {
                 return
             }
         }
-        if returnedToProjectStart, transition.pending == nil, pendingResume == nil {
+        if returnedToProjectStart, transition.pending == nil, pendingResume == nil, pauseSectionID == nil {
             cueSetlistStart()
             return
         }
@@ -151,27 +216,7 @@ final class PlaylistAutomation {
             if completion.armNext {
                 if let nextID = completion.boundary.nextSectionID,
                    let next = project.sections.first(where: { $0.id == nextID }) {
-                    // Stop has been acknowledged. Cue exactly once, keeping the
-                    // transport stopped; the view follows armedSectionID.
-                    let sentAt = ContinuousClock.now
-                    guard sendLocate(next, in: project) else {
-                        status = "Stopped: couldn’t cue \(next.name)"
-                        return
-                    }
-                    armedSectionID = next.id
-                    status = "Ready: \(next.name)"
-                    if completion.boundary.continuesAutomatically {
-                        pendingResume = (next.id, sentAt)
-                        isTransitioning = true
-                        status = "Cueing: \(next.name)"
-                        resumeTask = Task { @MainActor [weak self] in
-                            do { try await Task.sleep(for: .seconds(2)) } catch { return }
-                            guard let self, self.pendingResume != nil else { return }
-                            self.cancelResume()
-                            self.midi.stopForPlaylist()
-                            self.status = "Stopped: next song position wasn’t confirmed"
-                        }
-                    }
+                    beginEntry(next, automatically: completion.boundary.continuesAutomatically)
                 } else {
                     setFinishedAt = .now
                     status = "Set finished · Logic stopped"
@@ -179,6 +224,8 @@ final class PlaylistAutomation {
             }
             return
         }
+
+        if pauseSectionID != nil { return }
 
         if let resume = pendingResume {
             if let receivedAt = midi.positionReceivedAt, receivedAt > resume.sentAt,
@@ -259,6 +306,63 @@ final class PlaylistAutomation {
         }
     }
 
+    // Called only with Logic stopped: blocks never send synthetic locate positions.
+    private func beginEntry(_ entry: ArrangementSection, automatically: Bool) {
+        guard let project else { return }
+        cancelResume()
+        armedSectionID = entry.id
+        if entry.isFullStop || project.isExcluded(entry.id) {
+            setFinishedAt = .now
+            status = "Full stop · Set finished"
+            return
+        }
+        if let block = entry.block {
+            pauseSectionID = entry.id
+            pauseDeadline = .now.advanced(by: .seconds(block.seconds))
+            isTransitioning = true
+            status = "Pause · \(block.seconds) seconds · Stop cancels countdown"
+            pauseTask = Task { @MainActor [weak self] in
+                do { try await Task.sleep(for: .seconds(block.seconds)) } catch { return }
+                guard let self, self.pauseSectionID == entry.id else { return }
+                guard self.midi.isReady, self.midi.isPlaying == false else {
+                    self.cancelResume()
+                    self.status = "Pause ended · Logic unavailable · Press Play to retry"
+                    return
+                }
+                self.advanceAfterPause(entry)
+            }
+            return
+        }
+        let sentAt = ContinuousClock.now
+        guard sendLocate(entry, in: project) else {
+            status = "Stopped: couldn’t cue \(entry.name)"
+            return
+        }
+        status = "Ready: \(entry.name)"
+        guard automatically else { return }
+        pendingResume = (entry.id, sentAt)
+        isTransitioning = true
+        status = "Cueing: \(entry.name)"
+        resumeTask = Task { @MainActor [weak self] in
+            do { try await Task.sleep(for: .seconds(2)) } catch { return }
+            guard let self, self.pendingResume != nil else { return }
+            self.cancelResume()
+            self.midi.stopForPlaylist()
+            self.status = "Stopped: next song position wasn’t confirmed"
+        }
+    }
+
+    private func advanceAfterPause(_ entry: ArrangementSection) {
+        guard let project, let index = project.sections.firstIndex(where: { $0.id == entry.id }) else { return }
+        cancelResume()
+        if project.sections.indices.contains(index + 1) {
+            beginEntry(project.sections[index + 1], automatically: true)
+        } else {
+            setFinishedAt = .now
+            status = "Set finished · Logic stopped"
+        }
+    }
+
     private func requestStop(_ boundary: PlaylistStopBoundary, armNext: Bool) {
         guard transition.request(boundary, armNext: armNext) else { return }
         isTransitioning = true
@@ -296,6 +400,10 @@ final class PlaylistAutomation {
     }
 
     private func cancelResume() {
+        pauseTask?.cancel()
+        pauseTask = nil
+        pauseDeadline = nil
+        pauseSectionID = nil
         resumeTask?.cancel()
         resumeTask = nil
         pendingResume = nil

@@ -51,6 +51,8 @@ struct OperatorView: View {
                 return
             }
             guard let section = model.project?.sections.first(where: { $0.id == sectionID }) else { return }
+            // Excluded rows remain selectable for dragging, but never locate.
+            guard model.project?.isExcluded(section.id) != true else { return }
             model.locate(section)
         }
         .onChange(of: model.playlistAutomation.armedSectionID) { _, sectionID in
@@ -86,6 +88,16 @@ struct OperatorView: View {
             }
             .menuStyle(.borderlessButton)
             .help("Open, save, or reload a setlist")
+            Menu {
+                Button("Add Pause") { model.addBlock(.pause, after: selectedSectionID) }
+                Button("Add Full Stop") { model.addBlock(.fullStop, after: selectedSectionID) }
+            } label: {
+                Image(systemName: "plus.circle").frame(width: 28, height: 28)
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .disabled(model.project == nil || !model.canReorder)
+            .help("Add a block after the selected row, then drag it into place")
             Button { model.saveSetlist() } label: {
                 Image(systemName: "square.and.arrow.down")
                     .frame(width: 28, height: 28)
@@ -104,7 +116,8 @@ struct OperatorView: View {
             ScrollViewReader { proxy in
                 List(selection: $selectedSectionID) {
                     ForEach(Array(project.sections.enumerated()), id: \.element.id) { index, section in
-                        songRow(section, index: index, project: project)
+                        setlistRow(section, index: index, project: project)
+                            .opacity(project.isExcluded(section.id) ? 0.35 : 1)
                             .tag(section.id)
                             .id(section.id)
                             .listRowSeparator(.hidden)
@@ -133,8 +146,74 @@ struct OperatorView: View {
         }
     }
 
+    @ViewBuilder
+    private func setlistRow(_ section: ArrangementSection, index: Int, project: ImportedLogicProject) -> some View {
+        if section.isSong {
+            songRow(section, index: index, project: project)
+        } else {
+            blockRow(section, index: index)
+                .contextMenu {
+                    if !section.isFullStop {
+                        Button("Edit Pause…") { editingSectionID = section.id }
+                    }
+                    Button("Remove Block", role: .destructive) { model.removeBlock(section) }
+                        .disabled(!model.canReorder)
+                }
+        }
+    }
+
+    private func blockRow(_ section: ArrangementSection, index: Int) -> some View {
+        HStack(spacing: 10) {
+            Text(String(format: "%02d", index + 1))
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .frame(width: 24)
+            Image(systemName: section.isFullStop ? "stop.circle.fill" : "timer")
+                .foregroundStyle(section.isFullStop ? Color.red : Color.orange)
+            Text(section.name)
+                .font(.system(size: 17, weight: .medium))
+                .lineLimit(1)
+            Spacer(minLength: 0)
+            if section.isFullStop {
+                Toggle("Stop", isOn: .constant(true))
+                    .toggleStyle(.checkbox)
+                    .font(.caption)
+                    .disabled(true)
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 8))
+                    .foregroundStyle(.secondary)
+            } else {
+                Button {
+                    editingSectionID = section.id
+                } label: {
+                    HStack(spacing: 5) {
+                        Text("\(section.block?.seconds ?? 0) s").monospacedDigit()
+                        Image(systemName: "pencil")
+                    }
+                }
+                .buttonStyle(.borderless)
+                .disabled(!model.canReorder)
+                .help("Edit pause length in seconds")
+                .popover(isPresented: Binding(
+                    get: { editingSectionID == section.id },
+                    set: { if !$0 { editingSectionID = nil } }
+                )) {
+                    PauseBlockEditor(model: model, section: section) { editingSectionID = nil }
+                }
+            }
+        }
+        .padding(.horizontal, 8)
+        .frame(height: 48)
+        .background((section.isFullStop ? Color.red : Color.orange).opacity(0.08),
+                    in: RoundedRectangle(cornerRadius: 8))
+        .contentShape(Rectangle())
+        .help(section.isFullStop
+              ? "The set ends here. Rows below are excluded from playback and timing. Drag rows above this block to enable them again."
+              : "Stops Logic, waits for the chosen number of seconds, then automatically starts the next song. Stop cancels the countdown.")
+    }
+
     private func songRow(_ section: ArrangementSection, index: Int, project: ImportedLogicProject) -> some View {
-        let isLast = section.id == project.sections.last?.id
+        let isLast = section.id == project.playableEntries.last?.id
         return HStack(spacing: 10) {
             Text(String(format: "%02d", index + 1))
                 .font(.caption.monospacedDigit())
@@ -237,7 +316,7 @@ struct OperatorView: View {
                 }
                 .disabled(!model.midiController.isReady)
                 .help("Stop playback (Space toggles Play/Stop)")
-                Button { model.playlistAutomation.manualPlay() } label: {
+                Button { model.playlistAutomation.manualPlay(sectionID: selectedSectionID) } label: {
                     Label("Play", systemImage: "play.fill")
                         .font(.system(size: 22, weight: .semibold))
                         .frame(maxWidth: .infinity, minHeight: 72)
@@ -245,7 +324,7 @@ struct OperatorView: View {
                         .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 14))
                         .contentShape(RoundedRectangle(cornerRadius: 14))
                 }
-                .disabled(!model.canStartPlayback)
+                .disabled(!canPlaySelection)
                 .help("Start playback (Space toggles Play/Stop)")
             }
             .buttonStyle(.plain)
@@ -286,7 +365,7 @@ struct OperatorView: View {
                 .help(progress.map { "\($0.remainingDescription) remaining" } ?? "Waiting for song position")
             Text("Set \(model.setlistDurationLabel)")
                 .font(.caption2.monospacedDigit())
-                .help("Total song time in CueX order. Excludes gaps, waits at stops, and transition delays.")
+                .help("Total song and pause time up to the first full stop. Excludes timeline gaps, manual waits, and transition delays.")
             if let notice = model.projectChangeNotice {
                 Button { model.handleProjectChangeNotice() } label: {
                     HStack(spacing: 5) {
@@ -320,8 +399,8 @@ struct OperatorView: View {
         case .togglePlayback:
             if model.midiController.isPlaying == true || model.playlistAutomation.isTransitioning {
                 model.playlistAutomation.manualStop()
-            } else if model.canStartPlayback {
-                model.playlistAutomation.manualPlay()
+            } else if canPlaySelection {
+                model.playlistAutomation.manualPlay(sectionID: selectedSectionID)
             }
         case .previousSong:
             if let previousSection { selectedSectionID = previousSection.id }
@@ -334,18 +413,25 @@ struct OperatorView: View {
         Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })
     }
 
+    private var canPlaySelection: Bool {
+        guard model.canStartPlayback, let project = model.project,
+              let selected = project.sections.first(where: { $0.id == selectedSectionID }) else { return false }
+        return project.canCue(selected)
+    }
+
     private var previousSection: ArrangementSection? { adjacentSection(offset: -1) }
     private var nextSection: ArrangementSection? { adjacentSection(offset: 1) }
 
     private func adjacentSection(offset: Int) -> ArrangementSection? {
-        guard let sections = model.project?.sections,
+        guard let sections = model.project?.sections.filter({ model.project?.isExcluded($0.id) != true }),
               let index = sections.firstIndex(where: { $0.id == selectedSectionID }),
               sections.indices.contains(index + offset) else { return nil }
         return sections[index + offset]
     }
 
     private var transportStateLabel: String {
-        switch model.midiController.isPlaying {
+        if model.playlistAutomation.pauseSectionID != nil { return "Pause countdown" }
+        return switch model.midiController.isPlaying {
         case .some(true): "Playing"
         case .some(false): "Stopped"
         case .none: "Waiting for Logic"
@@ -361,9 +447,55 @@ struct OperatorView: View {
             return
         }
         guard let project = model.project,
-              !project.sections.contains(where: { $0.id == selectedSectionID }) else { return }
+              !project.sections.contains(where: { $0.id == selectedSectionID && !project.isExcluded($0.id) }) else { return }
         selectedSectionID = project.sections.first?.id
         suppressNextLocate = true
     }
 
+}
+
+private struct PauseBlockEditor: View {
+    let model: CueXModel
+    let section: ArrangementSection
+    let done: () -> Void
+    @State private var seconds: Int
+
+    init(model: CueXModel, section: ArrangementSection, done: @escaping () -> Void) {
+        self.model = model
+        self.section = section
+        self.done = done
+        _seconds = State(initialValue: section.block?.seconds ?? 30)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Pause length").font(.headline)
+            HStack {
+                TextField("Seconds", value: $seconds, format: .number.grouping(.never))
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit(apply)
+                Text("seconds")
+                Stepper("Seconds", value: $seconds, in: 1...86_400)
+                    .labelsHidden()
+            }
+            Text("Logic stops during the pause, then starts the next song automatically.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack {
+                Button("Cancel", action: done)
+                Spacer()
+                Button("Apply", action: apply)
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!(1...86_400).contains(seconds) || !model.canReorder)
+            }
+        }
+        .padding(16)
+        .frame(width: 290)
+    }
+
+    private func apply() {
+        guard (1...86_400).contains(seconds), model.canReorder else { return }
+        model.updatePause(seconds, for: section)
+        done()
+    }
 }
