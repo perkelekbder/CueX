@@ -27,10 +27,10 @@ struct OperatorView: View {
         .foregroundStyle(LogicTheme.text)
         .tint(LogicTheme.blue)
         .preferredColorScheme(.dark)
+        .focusedSceneValue(\.playbackActions, playbackActions)
         .background {
             OperatorKeyboardShortcuts(
-                isEnabled: model.project != nil && model.midiController.isReady
-                    && editingSectionID == nil && model.errorMessage == nil && !model.isImporting,
+                isEnabled: playbackActions != nil,
                 onAction: handleKeyboardAction
             )
         }
@@ -320,7 +320,7 @@ struct OperatorView: View {
                         .frame(maxWidth: .infinity, minHeight: 30)
                 }
                 .disabled(previousSection == nil || !model.midiController.isReady)
-                .help("Previous song (↑)")
+                .help("Previous song (, or ↑)")
                 Button { model.midiController.toggleCycle() } label: {
                     Label("Toggle Cycle", systemImage: "repeat")
                         .lineLimit(1)
@@ -342,7 +342,7 @@ struct OperatorView: View {
                         .frame(maxWidth: .infinity, minHeight: 30)
                 }
                 .disabled(nextSection == nil || !model.midiController.isReady)
-                .help("Next song (↓)")
+                .help("Next song (. or ↓)")
             }
             .buttonStyle(LogicButtonStyle())
             HStack(spacing: 10) {
@@ -410,14 +410,38 @@ struct OperatorView: View {
         .background(LogicTheme.footer)
     }
 
+    private var playbackActions: PlaybackActions? {
+        guard editingSectionID == nil, model.errorMessage == nil, !model.isImporting else { return nil }
+        let spaceStops = model.midiController.isPlaying == true || model.playlistAutomation.isTransitioning
+        return PlaybackActions(
+            canStop: model.midiController.isReady,
+            canStart: canPlaySelection && !spaceStops,
+            canToggleCycle: model.midiController.isReady && model.midiController.connectionHealth != .logicClosed,
+            canPrevious: previousSection != nil && model.midiController.isReady,
+            canNext: nextSection != nil && model.midiController.isReady,
+            spaceStops: spaceStops,
+            send: handleKeyboardAction
+        )
+    }
+
     private func handleKeyboardAction(_ action: OperatorKeyboardShortcuts.Action) {
+        guard let actions = playbackActions, actions.isEnabled(action) else { return }
         switch action {
+        case .resetPlayback:
+            model.playlistAutomation.manualStop()
+            model.playlistAutomation.manualStop()
+        case .stopPlayback:
+            model.playlistAutomation.manualStop()
+        case .startPlayback:
+            model.playlistAutomation.manualPlay(sectionID: selectedSectionID)
         case .togglePlayback:
-            if model.midiController.isPlaying == true || model.playlistAutomation.isTransitioning {
+            if actions.spaceStops {
                 model.playlistAutomation.manualStop()
-            } else if canPlaySelection {
+            } else {
                 model.playlistAutomation.manualPlay(sectionID: selectedSectionID)
             }
+        case .toggleCycle:
+            model.midiController.toggleCycle()
         case .previousSong:
             if let previousSection { selectedSectionID = previousSection.id }
         case .nextSong:

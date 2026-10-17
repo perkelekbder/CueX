@@ -18,6 +18,7 @@ struct CueXApp: App {
         .defaultSize(width: 420, height: 760)
         .windowResizability(.contentMinSize)
         .commands {
+            PlaybackCommands()
             CommandGroup(replacing: .newItem) {
                 Button("Open Setlist…") {
                     openWindow(id: "operator")

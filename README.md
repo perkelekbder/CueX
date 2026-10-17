@@ -79,8 +79,8 @@ Click it for details and connection instructions.
 
 ## Keyboard controls
 
-Click the CueX window, then use **Space** for Play/Stop and **↑ / ↓** to select the previous or next enabled row; Space also cancels a pause countdown or pending automatic restart.
-These shortcuts leave text editing, open dialogs, and other apps alone.
+The **Playback** menu provides Reset (**Enter**, sends Stop twice), Stop (**0**), Start/Stop (**Space**, depending on playback state), Toggle Cycle (**C**), Previous (**,** or **↑**), and Next (**.** or **↓**).
+Shortcuts work in the CueX window, leave text editing, dialogs, and other apps alone, and let Space cancel a pause countdown or pending automatic restart.
 
 ## Cycle
 

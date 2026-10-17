@@ -5,13 +5,16 @@ import SwiftUI
 /// window. Text editors, sheets, and other apps keep their normal key handling.
 struct OperatorKeyboardShortcuts: NSViewRepresentable {
     enum Action {
-        case togglePlayback, previousSong, nextSong
+        case resetPlayback, stopPlayback, startPlayback, togglePlayback, toggleCycle, previousSong, nextSong
 
         init?(keyCode: UInt16) {
             switch keyCode {
+            case 36, 76: self = .resetPlayback // Return and numeric-keypad Enter
+            case 29, 82: self = .stopPlayback // Main keyboard and numeric-keypad 0
             case 49: self = .togglePlayback
-            case 126: self = .previousSong
-            case 125: self = .nextSong
+            case 8: self = .toggleCycle
+            case 43, 126: self = .previousSong
+            case 47, 125: self = .nextSong
             default: return nil
             }
         }
