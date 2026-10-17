@@ -55,7 +55,7 @@ Shortcuts are inactive while editing notes or another text field, while a dialog
 
 ## Copy setlist
 
-With the CueX window active, choose **Edit → Copy Setlist** or press **⌘C**. The clipboard receives plain text only: one song name per line and `----` for each pause. Full Stop and all rows after it are omitted. No numbering, durations, notes, or other details are included. Copying works without a Logic connection. Text fields retain normal text-copy behavior while editing.
+With the CueX window active, choose **Edit → Copy** or press **⌘C**. The clipboard receives plain text only: one song name per line and `----` for each pause. Full Stop and all rows after it are omitted. No numbering, durations, notes, or other details are included. Copying works without a Logic connection. Text fields retain normal text-copy behavior while editing.
 
 ## Save and recall setlists
 

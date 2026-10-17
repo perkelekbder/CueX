@@ -6,15 +6,9 @@ struct CueXApp: App {
     @NSApplicationDelegateAdaptor(CueXAppDelegate.self) private var appDelegate
     @Environment(\.openWindow) private var openWindow
 
-    private var copySetlistAction: (() -> Void)? {
-        guard model.project != nil else { return nil }
-        return { model.copySetlist() }
-    }
-
     var body: some Scene {
         Window("CueX", id: "operator") {
             OperatorView(model: model)
-                .focusedSceneValue(\.copySetlist, copySetlistAction)
                 .onAppear {
                     appDelegate.model = model
                     appDelegate.showOperatorWindow = { [openWindow] in openWindow(id: "operator") }
@@ -24,7 +18,6 @@ struct CueXApp: App {
         .defaultSize(width: 420, height: 760)
         .windowResizability(.contentMinSize)
         .commands {
-            SetlistClipboardCommands()
             CommandGroup(replacing: .newItem) {
                 Button("Open Setlist…") {
                     openWindow(id: "operator")
@@ -56,8 +49,9 @@ struct CueXApp: App {
 }
 
 @MainActor
-final class CueXAppDelegate: NSObject, NSApplicationDelegate {
+final class CueXAppDelegate: NSObject, NSApplicationDelegate, NSUserInterfaceValidations {
     weak var model: CueXModel?
+    private weak var operatorWindow: NSWindow?
     var showOperatorWindow: (() -> Void)?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -79,9 +73,10 @@ final class CueXAppDelegate: NSObject, NSApplicationDelegate {
     func prepareOperatorWindow() {
         // Migrate the old landscape window once; later launches preserve resizing.
         DispatchQueue.main.async {
+            guard let window = NSApplication.shared.windows.first(where: { $0.title == "CueX" && $0.canBecomeMain }) else { return }
+            self.operatorWindow = window
             let defaults = UserDefaults.standard
-            guard !defaults.bool(forKey: "CueX.verticalWindowLayout"),
-                  let window = NSApplication.shared.windows.first(where: { $0.title == "CueX" && $0.canBecomeMain }) else { return }
+            guard !defaults.bool(forKey: "CueX.verticalWindowLayout") else { return }
             let availableHeight = (window.screen?.visibleFrame.height ?? 840) - 80
             window.setContentSize(NSSize(width: 420, height: max(560, min(760, availableHeight))))
             window.center()
@@ -89,30 +84,26 @@ final class CueXAppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    // The standard Edit → Copy action reaches the app delegate only when
+    // an earlier responder (such as a text editor) doesn't handle Copy.
+    @objc func copy(_ sender: Any?) {
+        guard canCopySetlist else { return }
+        model?.copySetlist()
+    }
+
+    func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {
+        if item.action == #selector(copy(_:)) { return canCopySetlist }
+        return true
+    }
+
+    private var canCopySetlist: Bool {
+        guard let operatorWindow else { return false }
+        return NSApp.isActive && NSApp.keyWindow === operatorWindow
+            && operatorWindow.attachedSheet == nil && NSApp.modalWindow == nil
+            && model?.project != nil
+    }
+
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         model?.confirmSetlistReplacement() == false ? .terminateCancel : .terminateNow
-    }
-}
-
-private struct CopySetlistActionKey: FocusedValueKey {
-    typealias Value = () -> Void
-}
-
-extension FocusedValues {
-    fileprivate var copySetlist: (() -> Void)? {
-        get { self[CopySetlistActionKey.self] }
-        set { self[CopySetlistActionKey.self] = newValue }
-    }
-}
-
-private struct SetlistClipboardCommands: Commands {
-    @FocusedValue(\.copySetlist) private var copySetlist
-
-    var body: some Commands {
-        CommandGroup(after: .pasteboard) {
-            Button("Copy Setlist") { copySetlist?() }
-                .keyboardShortcut("c")
-                .disabled(copySetlist == nil)
-        }
     }
 }
