@@ -12,6 +12,8 @@ struct OperatorView: View {
             VStack(spacing: 0) {
                 fileControls
                 Divider()
+                SetTimingHeader(model: model, fallbackSectionID: selectedSectionID)
+                Divider()
                 setlist
                 Divider()
                 transport
@@ -282,7 +284,9 @@ struct OperatorView: View {
                 .tint(model.midiController.isPlaying == true ? .green : .accentColor)
                 .accessibilityLabel("Song progress")
                 .help(progress.map { "\($0.remainingDescription) remaining" } ?? "Waiting for song position")
-            SetTimingFooter(model: model, fallbackSectionID: selectedSectionID)
+            Text("Set \(model.setlistDurationLabel)")
+                .font(.caption2.monospacedDigit())
+                .help("Total song time in CueX order. Excludes gaps, waits at stops, and transition delays.")
             if let notice = model.projectChangeNotice {
                 Button { model.handleProjectChangeNotice() } label: {
                     HStack(spacing: 5) {
@@ -305,7 +309,7 @@ struct OperatorView: View {
             }
         }
         .foregroundStyle(.secondary)
-        .frame(height: 130, alignment: .topLeading)
+        .frame(height: 110, alignment: .topLeading)
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .background(.quaternary.opacity(0.25))

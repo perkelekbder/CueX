@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct SetTimingFooter: View {
+struct SetTimingHeader: View {
     let model: CueXModel
     let fallbackSectionID: String?
 
@@ -8,20 +8,10 @@ struct SetTimingFooter: View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             let remaining = model.remainingSetSeconds(fallbackSectionID: fallbackSectionID)
             let finish = model.estimatedSetFinish(remainingSeconds: remaining, now: context.date)
-            VStack(spacing: 5) {
-                HStack {
-                    Text("Set \(model.setlistDurationLabel)")
-                    Spacer(minLength: 8)
-                    Text("Remaining \(ClockDurationFormatter.string(remaining))")
-                }
-                .monospacedDigit()
-                .help("Total and remaining song time in CueX order. Excludes gaps, waits at stops, and transition delays. Remaining follows Logic’s reported beat; without a position it starts from the selected song.")
-                HStack {
-                    Text(finishLabel)
-                    Spacer(minLength: 8)
-                    Text(ClockDurationFormatter.clockTime(finish))
-                        .monospacedDigit()
-                }
+            HStack(spacing: 12) {
+                timingValue("Remaining", value: ClockDurationFormatter.string(remaining))
+                    .help("Remaining song time in CueX order. Excludes gaps, waits at stops, and transition delays. Remaining follows Logic’s reported beat; without a position it starts from the selected song.")
+                timingValue(finishLabel, value: ClockDurationFormatter.clockTime(finish))
                 .help(finish.map {
                     $0.formatted(date: .abbreviated, time: .shortened)
                         + (model.playlistAutomation.setFinishedAt == nil
@@ -29,9 +19,24 @@ struct SetTimingFooter: View {
                            : "\nLogic confirmed the final automatic stop.")
                 } ?? "Finish time unavailable until usable tempo and position feedback are available.")
             }
-            .font(.caption2)
             .lineLimit(1)
         }
+        .frame(height: 72)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+    }
+
+    private func timingValue(_ title: String, value: String) -> some View {
+        VStack(spacing: 4) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.system(size: 32, weight: .semibold, design: .rounded).monospacedDigit())
+                .minimumScaleFactor(0.75)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .combine)
     }
 
     private var finishLabel: String {
