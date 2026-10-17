@@ -32,6 +32,9 @@ final class PlaylistAutomation {
     @ObservationIgnored private var startedAt: ContinuousClock.Instant?
     @ObservationIgnored private var lastSample: ContinuousClock.Instant?
     @ObservationIgnored private var previousBeat: Int?
+    @ObservationIgnored private var lastReportedSectionID: String?
+    @ObservationIgnored private var lastReportedPositionAt: ContinuousClock.Instant?
+    @ObservationIgnored private var lastLocateSentAt: ContinuousClock.Instant?
     @ObservationIgnored private var wasPlaying = false
     @ObservationIgnored private var projectStartGuard = ProjectStartReturnGuard()
     @ObservationIgnored private var manualStopAwaitingAcknowledgement = false
@@ -52,6 +55,9 @@ final class PlaylistAutomation {
         self.savedIDs = savedIDs
         clearManualStopRequest()
         projectStartGuard.reset(position: midi.position, receivedAt: midi.positionReceivedAt)
+        lastReportedSectionID = midi.position.flatMap { project.section(at: $0)?.id }
+        lastReportedPositionAt = midi.positionReceivedAt
+        lastLocateSentAt = nil
         armedSectionID = nil
         status = "Full stop marks the end of the set"
         receiveFeedback()
@@ -146,6 +152,7 @@ final class PlaylistAutomation {
         let sentAt = ContinuousClock.now
         guard midi.locate(tick: section.startTick, tempoChanges: project.tempoChanges, frameRate: project.timecodeFrameRate) else { return false }
         projectStartGuard.didLocate(tick: section.startTick, sentAt: sentAt)
+        lastLocateSentAt = sentAt
         return true
     }
 
@@ -238,6 +245,8 @@ final class PlaylistAutomation {
             }
         }
 
+        followReportedSong(in: project)
+
         guard midi.isPlaying == true else {
             cancelRun()
             return
@@ -304,6 +313,29 @@ final class PlaylistAutomation {
                 self.requestStop(target, armNext: true)
             }
         }
+    }
+
+    private func followReportedSong(in project: ImportedLogicProject) {
+        guard !isTransitioning,
+              let receivedAt = midi.positionReceivedAt,
+              lastReportedPositionAt.map({ receivedAt > $0 }) ?? true,
+              lastLocateSentAt.map({ receivedAt > $0 }) ?? true,
+              let position = midi.position else { return }
+        let section = project.section(at: position)
+        let changed = section?.id != lastReportedSectionID
+        lastReportedPositionAt = receivedAt
+        lastReportedSectionID = section?.id
+        guard changed, let section, !project.isExcluded(section.id) else { return }
+
+        // A forward seek can also leave the old song's stop timer behind.
+        // Recalculate from the reported song before scheduling another stop.
+        target = nil
+        stopTask?.cancel()
+        stopTask = nil
+        setFinishedAt = nil
+        armedSectionID = section.id
+        if midi.isPlaying == false { status = "Ready: \(section.name)" }
+        // The view follows armedSectionID without sending a locate back to Logic.
     }
 
     // Called only with Logic stopped: blocks never send synthetic locate positions.

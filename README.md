@@ -100,7 +100,7 @@ Open the setlist in CueX, locate the matching Logic project if asked, and save a
 ## Arrange the CueX setlist
 
 While stopped, drag songs or blocks into the order you want without moving anything in Logic.
-CueX follows this order during playback, with a possible brief gap when it needs to jump between songs.
+The selected row and its progress follow Logic’s playhead, and playback follows CueX order with a possible brief gap when jumping between songs.
 
 ## Song notes
 
