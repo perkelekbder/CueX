@@ -255,11 +255,8 @@ struct OperatorView: View {
     private var statusFooter: some View {
         let progress = model.songProgress
         return VStack(alignment: .leading, spacing: 5) {
+            LogicConnectionIndicator(midi: model.midiController)
             HStack(spacing: 6) {
-                Circle()
-                    .fill(model.midiController.isPlaying == nil ? Color.orange : .green)
-                    .frame(width: 6, height: 6)
-                    .help(model.midiController.status)
                 Text(transportStateLabel)
                 Spacer(minLength: 8)
                 if model.midiController.clockMode == .smpte {
@@ -317,7 +314,7 @@ struct OperatorView: View {
             }
         }
         .foregroundStyle(.secondary)
-        .frame(height: 90, alignment: .topLeading)
+        .frame(height: 110, alignment: .topLeading)
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .background(.quaternary.opacity(0.25))

@@ -112,6 +112,18 @@ final class PlaylistAutomation {
 
     private func receiveFeedback() {
         guard let project else { return }
+        if midi.isPlaying == nil {
+            // A closed/restarted Logic session must not retain an old pending
+            // automatic stop or restart. Fresh feedback will start a new run.
+            cancelResume()
+            cancelRun()
+            retryTask?.cancel()
+            transition.reset()
+            clearManualStopRequest()
+            armedSectionID = nil
+            status = "Waiting for Logic transport"
+            return
+        }
         let returnedToProjectStart = projectStartGuard.observe(
             position: midi.position, receivedAt: midi.positionReceivedAt, isPlaying: midi.isPlaying)
         if midi.isPlaying == false, manualStopAwaitingAcknowledgement {

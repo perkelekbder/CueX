@@ -36,6 +36,17 @@ MMC locating currently assumes bar 1 is at 01:00:00:00 and supports saved 24, 25
 
 The Dock icon brings back the same operator window after closing or minimizing it. Closing the window keeps CueX running; use **CueX → Quit CueX** or **⌘Q** to quit, with the existing prompt for unsaved setlist changes.
 
+## Connection health
+
+The footer’s connection indicator combines Logic’s running state, recent control-surface feedback, Core MIDI send errors, and Play/Stop acknowledgements. Click it for details, the age of the last feedback, and routing instructions.
+
+- **Green — Logic connected:** recent feedback is arriving. While playing, missing clock feedback for more than 1.5 seconds turns the indicator red.
+- **Amber — Waiting for Logic / Logic idle · Unverified:** Logic is running but feedback hasn’t arrived, or has been quiet for more than 8 seconds. Idle transport does not provide a continuous heartbeat, so silence while stopped is not reported as a confirmed disconnection.
+- **Red — MIDI unavailable / feedback lost / Logic not responding / MIDI send failed:** local ports failed, playback feedback went quiet, Play/Stop was not acknowledged within 2 seconds, or Core MIDI reported a send error.
+- **Gray — Logic not running:** Logic is closed. Old transport and position feedback is cleared when a known Logic process exits or restarts.
+
+The indicator is passive: it does not send Play, Stop, locate, or clock-mode probes. Recent input confirms feedback, not every outbound route or MMC configuration. Transport acknowledgements check requested state changes; an idempotent Stop while already stopped does not require fresh feedback. Reconnecting feedback updates the indicator automatically.
+
 ## Keyboard controls
 
 With the CueX operator window active, **Space** toggles Play/Stop and **↑ / ↓** select and locate the previous/next song in CueX order, without wrapping. Space also cancels a pending automatic restart. Holding a key triggers only one action per press. Shortcuts use the same behavior as the transport and song navigation buttons, including locating while playback is running.

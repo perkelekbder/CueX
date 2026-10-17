@@ -1,3 +1,4 @@
+import AppKit
 import CoreMIDI
 import CoreFoundation
 import Foundation
@@ -40,6 +41,16 @@ private func receiveLogicMIDI(_ events: UnsafePointer<MIDIEventList>, _ sourceCo
 @MainActor
 final class LogicMIDIController {
     private(set) var status = "Starting MIDI…"
+    private(set) var connectionHealth: LogicConnectionHealth = .waiting
+    private(set) var feedbackAgeSeconds: Int?
+    private(set) var lastSendError: String?
+    private(set) var lastConfirmedTransport: String?
+    @ObservationIgnored private var playbackBeganAt: ContinuousClock.Instant?
+    @ObservationIgnored private var lastFeedbackAt: ContinuousClock.Instant?
+    @ObservationIgnored private var lastClockFeedbackAt: ContinuousClock.Instant?
+    @ObservationIgnored private var pendingTransport: (playing: Bool, sentAt: ContinuousClock.Instant)?
+    @ObservationIgnored private var connectionMonitorTask: Task<Void, Never>?
+    @ObservationIgnored private var logicProcessID: pid_t?
     private(set) var isPlaying: Bool?
     private(set) var position: MackieClockPosition?
     private(set) var clockMode: MackieClockMode = .unknown
@@ -55,6 +66,7 @@ final class LogicMIDIController {
     var isReady: Bool { source != 0 && destination != 0 }
 
     init() {
+        defer { startConnectionMonitoring() }
         playbackObserver = NotificationCenter.default.addObserver(
             forName: .cueXLogicFeedbackReceived,
             object: nil,
@@ -94,33 +106,56 @@ final class LogicMIDIController {
         status = "MIDI ports ready · Enable MMC input in Logic for locating"
     }
 
-    func play() { sendMackieButton(note: 0x5E) }
-    func stop() { sendMackieButton(note: 0x5D) }
+    func play() {
+        let sentAt = ContinuousClock.now
+        let result = sendMackieButton(note: 0x5E)
+        recordTransportRequest(playing: true, result: result, sentAt: sentAt)
+    }
+
+    func stop() {
+        let sentAt = ContinuousClock.now
+        let result = sendMackieButton(note: 0x5D)
+        recordTransportRequest(playing: false, result: result, sentAt: sentAt)
+    }
 
     func stopForPlaylist() {
         // MMC Stop is idempotent; unlike pressing MCU Stop twice it does not
         // jump to the beginning when a delayed acknowledgement requires a retry.
+        let sentAt = ContinuousClock.now
         let result = sendSystemExclusive([0xF0, 0x7F, 0x7F, 0x06, 0x01, 0xF7])
-        if result != noErr { status = Self.errorText("Couldn’t send automatic stop", code: result) }
+        recordTransportRequest(playing: false, result: result, sentAt: sentAt)
     }
 
     func showBarsAndBeats() {
         guard clockMode == .smpte else { return }
-        sendMackieButton(note: 0x35)
+        let result = sendMackieButton(note: 0x35)
+        recordSendResult(result, operation: "Couldn’t switch clock mode")
+        if result == noErr { status = "Clock mode request sent" }
     }
 
     private func consumeFeedback(_ updates: [MackieFeedbackEvent], receivedAt: ContinuousClock.Instant) {
+        refreshConnectionHealth(checkLogicSession: logicProcessID == nil)
+        lastFeedbackAt = receivedAt
         var clockChanged = false
         var transportChanged = false
         for update in updates {
             if case let .note(number: 0x5E, value: value) = update {
+                if value > 0, isPlaying != true { playbackBeganAt = receivedAt }
+                if value == 0 { playbackBeganAt = nil }
                 isPlaying = value > 0
+                if let pendingTransport, receivedAt >= pendingTransport.sentAt,
+                   isPlaying == pendingTransport.playing {
+                    lastConfirmedTransport = pendingTransport.playing ? "Play acknowledged" : "Stop acknowledged"
+                    self.pendingTransport = nil
+                }
                 transportChanged = true
             } else {
+                if case .display = update { lastClockFeedbackAt = receivedAt }
                 positionDecoder.consume(update)
                 clockChanged = true
             }
         }
+        refreshConnectionHealth()
         if transportChanged { onFeedback?() }
         guard clockChanged else { return }
         // One display refresh can arrive in several callbacks. Publish after
@@ -167,6 +202,7 @@ final class LogicMIDIController {
             0xF0, 0x7F, 0x7F, 0x06, 0x44, 0x06, 0x01,
             timecodeHour, UInt8(minute), UInt8(second), UInt8(frame), 0x00, 0xF7
         ])
+        recordSendResult(result, operation: "Couldn’t send locate")
         status = result == noErr
             ? "Locate sent · \(frameRate) fps"
             : Self.errorText("Couldn’t send locate", code: result)
@@ -201,8 +237,9 @@ final class LogicMIDIController {
         return MIDIReceived(source, &list)
     }
 
-    private func sendMackieButton(note: UInt8) {
-        guard source != 0 else { return }
+    @discardableResult
+    private func sendMackieButton(note: UInt8) -> OSStatus {
+        guard source != 0 else { return -50 }
 
         // Mackie Control transport buttons are momentary: send Note On followed
         // immediately by Note Off. UMP MIDI 1.0 words contain status/data bytes.
@@ -226,8 +263,89 @@ final class LogicMIDIController {
                 MIDIEventListAdd(list, capacity, packet, timestamp, 1, wordPointer)
             }
         }
-        _ = MIDIReceivedEventList(source, list)
+        return MIDIReceivedEventList(source, list)
     }
+
+    private func recordSendResult(_ result: OSStatus, operation: String) {
+        lastSendError = result == noErr ? nil : Self.errorText(operation, code: result)
+        if let lastSendError { status = lastSendError }
+        refreshConnectionHealth()
+    }
+
+    private func recordTransportRequest(playing: Bool, result: OSStatus, sentAt: ContinuousClock.Instant) {
+        recordSendResult(result, operation: playing ? "Couldn’t send Play" : "Couldn’t send Stop")
+        guard result == noErr else { return }
+        status = playing ? "Play sent" : "Stop sent"
+        if isPlaying == playing {
+            pendingTransport = nil
+        } else if pendingTransport?.playing != playing {
+            // Repeated Stop retries must not extend the acknowledgement deadline.
+            pendingTransport = (playing, sentAt)
+        }
+        refreshConnectionHealth()
+    }
+
+    private func startConnectionMonitoring() {
+        refreshConnectionHealth(checkLogicSession: true)
+        connectionMonitorTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .milliseconds(500)) } catch { return }
+                guard let self else { return }
+                self.refreshConnectionHealth(checkLogicSession: true)
+            }
+        }
+    }
+
+    private func refreshConnectionHealth(checkLogicSession: Bool = false) {
+        let pid = checkLogicSession ? NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.logic10")
+            .first(where: { !$0.isTerminated })?.processIdentifier : logicProcessID
+        if pid != logicProcessID {
+            let hadLogicSession = logicProcessID != nil
+            logicProcessID = pid
+            lastFeedbackAt = nil
+            lastClockFeedbackAt = nil
+            playbackBeganAt = nil
+            pendingTransport = nil
+            lastConfirmedTransport = nil
+            lastSendError = nil
+            if hadLogicSession {
+                // Old LEDs and clock values must not describe a restarted Logic.
+                positionUpdateTask?.cancel()
+                isPlaying = nil
+                position = nil
+                positionReceivedAt = nil
+                clockMode = .unknown
+                positionDecoder = MackiePositionDecoder()
+                onFeedback?()
+            }
+        }
+        let now = ContinuousClock.now
+        let age = lastFeedbackAt.map { Self.seconds($0.duration(to: now)) }
+        let clockReference = [lastClockFeedbackAt, playbackBeganAt].compactMap { $0 }.max()
+        feedbackAgeSeconds = age.map { max(0, Int($0)) }
+        if !isReady {
+            connectionHealth = .midiUnavailable
+        } else if pid == nil {
+            connectionHealth = .logicClosed
+        } else if lastSendError != nil {
+            connectionHealth = .sendFailed
+        } else if let pendingTransport, Self.seconds(pendingTransport.sentAt.duration(to: now)) > 2 {
+            connectionHealth = .commandUnconfirmed
+        } else if isPlaying == true,
+                  clockReference.map({ Self.seconds($0.duration(to: now)) > 1.5 }) ?? false {
+            connectionHealth = .feedbackLost
+        } else if let age {
+            connectionHealth = age <= 8 ? .connected : .idle
+        } else {
+            connectionHealth = .waiting
+        }
+    }
+
+    private static func seconds(_ duration: Duration) -> Double {
+        Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
+    }
+
+    deinit { connectionMonitorTask?.cancel() }
 
     private func dispose() {
         if let playbackObserver {
