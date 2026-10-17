@@ -11,7 +11,7 @@ struct LogicConnectionIndicator: View {
                 Text(midi.connectionHealth.label)
                     .lineLimit(1)
                 Spacer(minLength: 0)
-                Image(systemName: "info.circle").foregroundStyle(.secondary)
+                Image(systemName: "info.circle").foregroundStyle(LogicTheme.secondaryText)
             }
             .font(.caption)
             .contentShape(Rectangle())
@@ -38,25 +38,26 @@ struct LogicConnectionIndicator: View {
                     Text(acknowledgement)
                 }
                 if let error = midi.lastSendError {
-                    Text(error).foregroundStyle(.red)
+                    Text(error).foregroundStyle(LogicTheme.red)
                 }
                 Divider()
                 Text("Logic → Control Surfaces → Setup\nMackie Control\nInput: CueX → Logic\nOutput: Logic → CueX")
                 Text("For song locating and Stop, enable Listen to MIDI Machine Control (MMC) input in Logic’s project synchronization settings.")
-                Text(midi.status).foregroundStyle(.secondary)
+                Text(midi.status).foregroundStyle(LogicTheme.secondaryText)
             }
             .font(.caption)
             .padding(16)
             .frame(width: 320)
+            .background(LogicTheme.panel)
         }
     }
 
     private var color: Color {
         switch midi.connectionHealth {
-        case .connected: .green
-        case .waiting, .idle: .orange
-        case .logicClosed: .secondary
-        case .midiUnavailable, .feedbackLost, .commandUnconfirmed, .sendFailed: .red
+        case .connected: LogicTheme.green
+        case .waiting, .idle: LogicTheme.amber
+        case .logicClosed: LogicTheme.secondaryText
+        case .midiUnavailable, .feedbackLost, .commandUnconfirmed, .sendFailed: LogicTheme.red
         }
     }
 }

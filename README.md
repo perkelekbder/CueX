@@ -5,6 +5,7 @@ CueX is a native macOS show-control app for Logic Pro playback projects.
 ## Current milestone
 
 - Single-window macOS app with a compact vertical operator window that opens on launch
+- Logic-inspired charcoal/gray surfaces, white labels, blue controls, and colored status indicators
 - Setlist fills most of the window, with large transport controls below and compact status in the footer
 - Per-song note editors open from the row’s note button; file actions live in the setlist title menu
 - Select a saved `.logicx` project

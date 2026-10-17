@@ -24,13 +24,14 @@ struct SetTimingHeader: View {
         .frame(height: 72)
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
+        .background(LogicTheme.timing)
     }
 
     private func timingValue(_ title: String, value: String) -> some View {
         VStack(spacing: 4) {
             Text(title)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(LogicTheme.secondaryText)
             Text(value)
                 .font(.system(size: 32, weight: .semibold, design: .rounded).monospacedDigit())
                 .minimumScaleFactor(0.75)

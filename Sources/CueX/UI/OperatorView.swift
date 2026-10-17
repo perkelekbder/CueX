@@ -11,19 +11,22 @@ struct OperatorView: View {
         GeometryReader { _ in
             VStack(spacing: 0) {
                 fileControls
-                Divider()
+                panelDivider
                 SetTimingHeader(model: model, fallbackSectionID: selectedSectionID)
-                Divider()
+                panelDivider
                 setlist
-                Divider()
+                panelDivider
                 transport
-                Divider()
+                panelDivider
                 statusFooter
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(nsColor: .windowBackgroundColor))
+            .background(LogicTheme.background)
         }
         .frame(minWidth: 360, minHeight: 560)
+        .foregroundStyle(LogicTheme.text)
+        .tint(LogicTheme.blue)
+        .preferredColorScheme(.dark)
         .background {
             OperatorKeyboardShortcuts(
                 isEnabled: model.project != nil && model.midiController.isReady
@@ -61,6 +64,10 @@ struct OperatorView: View {
             suppressNextLocate = true
             selectedSectionID = sectionID
         }
+    }
+
+    private var panelDivider: some View {
+        Rectangle().fill(LogicTheme.divider).frame(height: 1)
     }
 
     private var fileControls: some View {
@@ -107,6 +114,7 @@ struct OperatorView: View {
         }
         .padding(.horizontal, 14)
         .frame(height: 46)
+        .background(LogicTheme.toolbar)
     }
 
     @ViewBuilder
@@ -121,12 +129,14 @@ struct OperatorView: View {
                             .id(section.id)
                             .listRowSeparator(.hidden)
                             .listRowInsets(EdgeInsets(top: 3, leading: 10, bottom: 3, trailing: 10))
-                            .listRowBackground(Color.clear)
+                            .listRowBackground(selectedSectionID == section.id ? LogicTheme.selectedRow : LogicTheme.row)
                             .moveDisabled(!model.canReorder)
                     }
                     .onMove { model.moveSections(from: $0, to: $1) }
                 }
                 .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .background(LogicTheme.setlist)
                 .onChange(of: selectedSectionID) { _, id in
                     guard let id else { return }
                     withAnimation { proxy.scrollTo(id, anchor: .center) }
@@ -142,6 +152,7 @@ struct OperatorView: View {
             }
             .disabled(!model.canReorder)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(LogicTheme.setlist)
         }
     }
 
@@ -165,10 +176,10 @@ struct OperatorView: View {
         HStack(spacing: 10) {
             Text(String(format: "%02d", index + 1))
                 .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(LogicTheme.secondaryText)
                 .frame(width: 24)
             Image(systemName: section.isFullStop ? "stop.circle.fill" : "timer")
-                .foregroundStyle(section.isFullStop ? Color.red : Color.orange)
+                .foregroundStyle(section.isFullStop ? LogicTheme.red : LogicTheme.amber)
             Text(section.name)
                 .font(.system(size: 17, weight: .medium))
                 .lineLimit(1)
@@ -180,7 +191,7 @@ struct OperatorView: View {
                     .disabled(true)
                 Image(systemName: "lock.fill")
                     .font(.system(size: 8))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(LogicTheme.secondaryText)
             } else {
                 Button {
                     editingSectionID = section.id
@@ -203,7 +214,7 @@ struct OperatorView: View {
         }
         .padding(.horizontal, 8)
         .frame(height: 48)
-        .background((section.isFullStop ? Color.red : Color.orange).opacity(0.08),
+        .background((section.isFullStop ? LogicTheme.red : LogicTheme.amber).opacity(0.08),
                     in: RoundedRectangle(cornerRadius: 8))
         .contentShape(Rectangle())
         .help(section.isFullStop
@@ -215,7 +226,7 @@ struct OperatorView: View {
         return HStack(spacing: 10) {
             Text(String(format: "%02d", index + 1))
                 .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(LogicTheme.secondaryText)
                 .frame(width: 24)
             Text(section.name)
                 .font(.system(size: 17, weight: .medium))
@@ -224,7 +235,7 @@ struct OperatorView: View {
                 .help("\(section.name) · \(MusicalTimeFormatter.position(tick: section.startTick, signatures: project.timeSignatures)) · \(MusicalTimeFormatter.duration(ticks: section.lengthTicks, startingAt: section.startTick, signatures: project.timeSignatures))")
             Text(model.songDurationLabel(for: section))
                 .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(LogicTheme.secondaryText)
                 .fixedSize()
                 .frame(minWidth: 38, alignment: .trailing)
                 .accessibilityLabel("Song duration: \(model.songDurationLabel(for: section))")
@@ -276,6 +287,7 @@ struct OperatorView: View {
         }
         .padding(16)
         .frame(width: 300)
+        .background(LogicTheme.panel)
     }
 
     private var transport: some View {
@@ -298,32 +310,31 @@ struct OperatorView: View {
                 .disabled(nextSection == nil || !model.midiController.isReady)
                 .help("Next song (↓)")
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(LogicButtonStyle())
             HStack(spacing: 10) {
                 Button { model.playlistAutomation.manualStop() } label: {
                     Label("Stop", systemImage: "stop.fill")
                         .font(.system(size: 22, weight: .semibold))
                         .frame(maxWidth: .infinity, minHeight: 72)
-                        .background(.red.opacity(0.14), in: RoundedRectangle(cornerRadius: 14))
                         .contentShape(RoundedRectangle(cornerRadius: 14))
                 }
+                .buttonStyle(LogicButtonStyle(cornerRadius: 14))
                 .disabled(!model.midiController.isReady)
                 .help("Stop playback (Space toggles Play/Stop)")
                 Button { model.playlistAutomation.manualPlay(sectionID: selectedSectionID) } label: {
                     Label("Play", systemImage: "play.fill")
                         .font(.system(size: 22, weight: .semibold))
                         .frame(maxWidth: .infinity, minHeight: 72)
-                        .foregroundStyle(.white)
-                        .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 14))
                         .contentShape(RoundedRectangle(cornerRadius: 14))
                 }
+                .buttonStyle(LogicButtonStyle(tint: LogicTheme.blue, cornerRadius: 14))
                 .disabled(!canPlaySelection)
                 .help("Start playback (Space toggles Play/Stop)")
             }
-            .buttonStyle(.plain)
         }
         .padding(12)
         .fixedSize(horizontal: false, vertical: true)
+        .background(LogicTheme.panel)
     }
 
     private var statusFooter: some View {
@@ -353,7 +364,7 @@ struct OperatorView: View {
             }
             .font(.caption)
             ProgressView(value: progress?.fraction ?? 0)
-                .tint(model.midiController.isPlaying == true ? .green : .accentColor)
+                .tint(model.midiController.isPlaying == true ? LogicTheme.green : LogicTheme.blue)
                 .accessibilityLabel("Song progress")
                 .help(progress.map { "\($0.remainingDescription) remaining" } ?? "Waiting for song position")
             Text("Set \(model.setlistDurationLabel)")
@@ -371,7 +382,7 @@ struct OperatorView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(model.hasPendingProjectReload ? Color.orange : Color.secondary)
+                .foregroundStyle(model.hasPendingProjectReload ? LogicTheme.amber : LogicTheme.secondaryText)
                 .help(notice + (model.hasPendingProjectReload ? "\nReloads automatically once stopped. Click to retry while stopped." : "\nClick to dismiss."))
             } else {
                 Text(model.playlistAutomation.status)
@@ -380,11 +391,11 @@ struct OperatorView: View {
                     .help("\(model.playlistAutomation.status)\n\(model.midiController.status)" + (progress.map { "\n\($0.remainingDescription) remaining" } ?? ""))
             }
         }
-        .foregroundStyle(.secondary)
+        .foregroundStyle(LogicTheme.secondaryText)
         .frame(height: 110, alignment: .topLeading)
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .background(.quaternary.opacity(0.25))
+        .background(LogicTheme.footer)
     }
 
     private func handleKeyboardAction(_ action: OperatorKeyboardShortcuts.Action) {
@@ -473,7 +484,7 @@ private struct PauseBlockEditor: View {
             }
             Text("Logic stops during the pause, then starts the next song automatically.")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(LogicTheme.secondaryText)
             HStack {
                 Button("Cancel", action: done)
                 Spacer()
@@ -484,6 +495,7 @@ private struct PauseBlockEditor: View {
         }
         .padding(16)
         .frame(width: 290)
+        .background(LogicTheme.panel)
     }
 
     private func apply() {
