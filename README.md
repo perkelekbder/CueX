@@ -76,9 +76,13 @@ Unchecked songs continue naturally when the next setlist song starts exactly at 
 
 ## Song and setlist duration
 
-Each song row shows its duration in minutes and seconds. The footer shows **Setlist length**, the sum of the songs in CueX. Durations integrate the saved tempo changes across each song’s start and end ticks. They refresh when the project is imported or reloaded after a Logic save.
+Each song row shows its duration. The footer shows **Set**, the sum of the songs in CueX, **Remaining**, and the estimated finish time. Durations integrate the saved tempo changes across each song’s start and end ticks. They refresh when the project is imported or reloaded after a Logic save.
 
-The total excludes gaps in Logic’s timeline, time waiting at programmed stops, and the brief delays of MIDI-controlled jumps. Songs are summed before rounding the total to the nearest second; row durations are also rounded to the nearest second. Durations longer than an hour continue counting minutes, for example `75:30`. If a song has no usable tempo map, its duration and the total show `—` instead of assuming a tempo or showing a partial total.
+The total excludes gaps in Logic’s timeline, time waiting at programmed stops, and the brief delays of MIDI-controlled jumps. Songs are summed before rounding the total to the nearest second; row durations are also rounded to the nearest second. Durations shorter than an hour use `MM:SS`; durations of one hour or longer use `HH:MM:SS`, for example `01:15:30`. The same formatting applies to song durations, the total, and remaining time. If a song has no usable tempo map, its duration and the total show `—` instead of assuming a tempo or showing a partial total.
+
+Remaining time is the current song’s unplayed duration plus the later songs in CueX order. It follows Logic’s reported beat, so paused playback leaves it unchanged. Without a reported position, the selected song is treated as the starting point; missing live position during playback shows `—`. Timeline gaps add no time. After Logic acknowledges the final automatic stop, remaining becomes zero and the finish time is held at the actual stop acknowledgement.
+
+The finish time uses local `HH:mm` without seconds. **Est. finish** assumes uninterrupted remaining playback; waiting at programmed stops or manual pauses moves it later. While stopped it is labeled **Finish if resumed now**. Missing tempo data or lost live playback feedback makes the estimate unavailable. Hover over the time to see its date, including when a set crosses midnight.
 
 ## Detect saves in Logic
 

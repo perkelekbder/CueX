@@ -6,6 +6,7 @@ import Observation
 final class PlaylistAutomation {
     private(set) var status = "Last song always stops"
     private(set) var armedSectionID: String?
+    private(set) var setFinishedAt: Date?
     private(set) var isTransitioning = false
     @ObservationIgnored private var pendingResume: (sectionID: String, sentAt: ContinuousClock.Instant)?
     @ObservationIgnored private var resumeTask: Task<Void, Never>?
@@ -36,6 +37,7 @@ final class PlaylistAutomation {
         transition.reset()
         retryTask?.cancel()
         self.project = project
+        setFinishedAt = nil
         self.savedIDs = savedIDs
         clearManualStopRequest()
         projectStartGuard.reset(position: midi.position, receivedAt: midi.positionReceivedAt)
@@ -55,6 +57,7 @@ final class PlaylistAutomation {
 
     func manualLocate(_ section: ArrangementSection) {
         guard let project else { return }
+        setFinishedAt = nil
         cancelResume()
         cancelRun()
         retryTask?.cancel()
@@ -65,6 +68,7 @@ final class PlaylistAutomation {
     }
 
     func manualPlay() {
+        setFinishedAt = nil
         clearManualStopRequest()
         midi.play()
     }
@@ -97,6 +101,7 @@ final class PlaylistAutomation {
 
     private func cueSetlistStart() {
         guard let project, let first = project.sections.first else { return }
+        setFinishedAt = nil
         cancelResume()
         cancelRun()
         retryTask?.cancel()
@@ -124,6 +129,7 @@ final class PlaylistAutomation {
             status = "Waiting for Logic transport"
             return
         }
+        if midi.isPlaying == true { setFinishedAt = nil }
         let returnedToProjectStart = projectStartGuard.observe(
             position: midi.position, receivedAt: midi.positionReceivedAt, isPlaying: midi.isPlaying)
         if midi.isPlaying == false, manualStopAwaitingAcknowledgement {
@@ -167,6 +173,7 @@ final class PlaylistAutomation {
                         }
                     }
                 } else {
+                    setFinishedAt = .now
                     status = "Set finished · Logic stopped"
                 }
             }

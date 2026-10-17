@@ -50,11 +50,27 @@ final class CueXModel {
     }
 
     func songDurationLabel(for section: ArrangementSection) -> String {
-        ClockDurationFormatter.minutesAndSeconds(setlistDurations?.songSeconds[section.id])
+        ClockDurationFormatter.string(setlistDurations?.songSeconds[section.id])
     }
 
     var setlistDurationLabel: String {
-        ClockDurationFormatter.minutesAndSeconds(setlistDurations?.totalSeconds)
+        ClockDurationFormatter.string(setlistDurations?.totalSeconds)
+    }
+
+    func remainingSetSeconds(fallbackSectionID: String?) -> Double? {
+        guard let project, let setlistDurations else { return nil }
+        if playlistAutomation.setFinishedAt != nil { return 0 }
+        // Do not substitute a selected song for missing live playback position.
+        if midiController.isPlaying == true, midiController.position == nil { return nil }
+        return RemainingSetTime.seconds(project: project, durations: setlistDurations,
+            position: midiController.position, fallbackSectionID: fallbackSectionID)
+    }
+
+    func estimatedSetFinish(remainingSeconds: Double?, now: Date) -> Date? {
+        if let finished = playlistAutomation.setFinishedAt { return finished }
+        guard let remainingSeconds, remainingSeconds.isFinite, remainingSeconds >= 0 else { return nil }
+        if midiController.isPlaying == true, midiController.connectionHealth != .connected { return nil }
+        return now.addingTimeInterval(remainingSeconds)
     }
 
     var activeSection: ArrangementSection? {

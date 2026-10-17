@@ -28,10 +28,21 @@ struct SetlistDurations {
 }
 
 enum ClockDurationFormatter {
-    static func minutesAndSeconds(_ seconds: Double?) -> String {
+    static func string(_ seconds: Double?) -> String {
         guard let seconds, seconds.isFinite, seconds >= 0,
               seconds.rounded() < Double(Int.max) else { return "—" }
         let rounded = Int(seconds.rounded())
-        return "\(rounded / 60):" + String(format: "%02d", rounded % 60)
+        if rounded >= 3_600 {
+            return String(format: "%02d", rounded / 3_600) + ":"
+                + String(format: "%02d:%02d", (rounded / 60) % 60, rounded % 60)
+        }
+        return String(format: "%02d:%02d", rounded / 60, rounded % 60)
+    }
+
+    static func clockTime(_ date: Date?) -> String {
+        guard let date else { return "—" }
+        let parts = Calendar.autoupdatingCurrent.dateComponents([.hour, .minute], from: date)
+        guard let hour = parts.hour, let minute = parts.minute else { return "—" }
+        return String(format: "%02d:%02d", hour, minute)
     }
 }

@@ -151,7 +151,7 @@ struct OperatorView: View {
                 .accessibilityLabel("Song duration: \(model.songDurationLabel(for: section))")
                 .help(model.setlistDurations?.songSeconds[section.id] == nil
                       ? "Duration unavailable: this song has no usable saved tempo map."
-                      : "Song duration in minutes and seconds, including saved tempo changes.")
+                      : "Song duration including saved tempo changes; hours appear for durations of one hour or longer.")
             Button { editingSectionID = section.id } label: {
                 Image(systemName: model.note(for: section).isEmpty ? "square.and.pencil" : "note.text")
                     .frame(width: 28, height: 32)
@@ -282,16 +282,7 @@ struct OperatorView: View {
                 .tint(model.midiController.isPlaying == true ? .green : .accentColor)
                 .accessibilityLabel("Song progress")
                 .help(progress.map { "\($0.remainingDescription) remaining" } ?? "Waiting for song position")
-            HStack {
-                Text("Setlist length")
-                Spacer(minLength: 8)
-                Text(model.setlistDurationLabel)
-                    .monospacedDigit()
-            }
-            .font(.caption2)
-            .help(model.setlistDurations?.totalSeconds == nil
-                  ? "Total duration unavailable: one or more songs have no usable saved tempo map."
-                  : "Total song time in minutes and seconds; excludes timeline gaps, time waiting at stops, and transition delays.")
+            SetTimingFooter(model: model, fallbackSectionID: selectedSectionID)
             if let notice = model.projectChangeNotice {
                 Button { model.handleProjectChangeNotice() } label: {
                     HStack(spacing: 5) {
@@ -314,7 +305,7 @@ struct OperatorView: View {
             }
         }
         .foregroundStyle(.secondary)
-        .frame(height: 110, alignment: .topLeading)
+        .frame(height: 130, alignment: .topLeading)
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .background(.quaternary.opacity(0.25))
