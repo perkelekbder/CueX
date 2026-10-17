@@ -149,4 +149,5 @@ Keep Logic projects, audio, and saved setlists separately; macOS may ask for per
 
 ## License
 
-A source-code license has not been selected yet.
+CueX is licensed under the [MIT License](LICENSE).
+Commercial reuse is welcome; copies or substantial portions of the software must retain the license and copyright notice crediting Yevhenii Zhytniuk and CueX.
