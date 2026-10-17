@@ -6,9 +6,15 @@ struct CueXApp: App {
     @NSApplicationDelegateAdaptor(CueXAppDelegate.self) private var appDelegate
     @Environment(\.openWindow) private var openWindow
 
+    private var copySetlistAction: (() -> Void)? {
+        guard model.project != nil else { return nil }
+        return { model.copySetlist() }
+    }
+
     var body: some Scene {
         Window("CueX", id: "operator") {
             OperatorView(model: model)
+                .focusedSceneValue(\.copySetlist, copySetlistAction)
                 .onAppear {
                     appDelegate.model = model
                     appDelegate.showOperatorWindow = { [openWindow] in openWindow(id: "operator") }
@@ -18,6 +24,7 @@ struct CueXApp: App {
         .defaultSize(width: 420, height: 760)
         .windowResizability(.contentMinSize)
         .commands {
+            SetlistClipboardCommands()
             CommandGroup(replacing: .newItem) {
                 Button("Open Setlist…") {
                     openWindow(id: "operator")
@@ -84,5 +91,28 @@ final class CueXAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         model?.confirmSetlistReplacement() == false ? .terminateCancel : .terminateNow
+    }
+}
+
+private struct CopySetlistActionKey: FocusedValueKey {
+    typealias Value = () -> Void
+}
+
+extension FocusedValues {
+    fileprivate var copySetlist: (() -> Void)? {
+        get { self[CopySetlistActionKey.self] }
+        set { self[CopySetlistActionKey.self] = newValue }
+    }
+}
+
+private struct SetlistClipboardCommands: Commands {
+    @FocusedValue(\.copySetlist) private var copySetlist
+
+    var body: some Commands {
+        CommandGroup(after: .pasteboard) {
+            Button("Copy Setlist") { copySetlist?() }
+                .keyboardShortcut("c")
+                .disabled(copySetlist == nil)
+        }
     }
 }

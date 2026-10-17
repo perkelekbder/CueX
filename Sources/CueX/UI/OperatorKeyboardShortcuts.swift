@@ -19,6 +19,7 @@ struct OperatorKeyboardShortcuts: NSViewRepresentable {
 
     var isEnabled: Bool
     var onAction: (Action) -> Void
+    var onCopySetlist: (() -> Void)?
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -48,16 +49,23 @@ struct OperatorKeyboardShortcuts: NSViewRepresentable {
             guard monitor == nil else { return }
             monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
                 let handled = MainActor.assumeIsolated {
-                    guard let self, let configuration = self.configuration, configuration.isEnabled,
+                    guard let self, let configuration = self.configuration,
                           let window = self.view?.window, window.isKeyWindow, NSApp.isActive,
                           event.window === window, window.attachedSheet == nil, NSApp.modalWindow == nil,
-                          !(window.firstResponder is NSTextView), !(window.firstResponder is NSTextField),
-                          let action = Action(keyCode: event.keyCode) else { return false }
+                          !(window.firstResponder is NSTextView), !(window.firstResponder is NSTextField) else { return false }
                     // Arrow events include function/numeric-pad flags. Preserve
                     // Command, Option, Shift, and Control combinations for macOS.
                     let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
                         .subtracting([.capsLock, .function, .numericPad])
-                    guard modifiers.isEmpty else { return false }
+                    // Copy is independent of MIDI readiness and List selection.
+                    // Text editors retain the standard macOS Copy command.
+                    if modifiers == .command, event.charactersIgnoringModifiers?.lowercased() == "c",
+                       let copySetlist = configuration.onCopySetlist {
+                        if !event.isARepeat { copySetlist() }
+                        return true
+                    }
+                    guard configuration.isEnabled, modifiers.isEmpty,
+                          let action = Action(keyCode: event.keyCode) else { return false }
                     // One action per press, even if a key is held down.
                     if !event.isARepeat { configuration.onAction(action) }
                     return true

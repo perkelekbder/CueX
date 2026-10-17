@@ -49,6 +49,15 @@ final class CueXModel {
         } catch { errorMessage = error.localizedDescription }
     }
 
+    func copySetlist() {
+        guard let project else { return }
+        let text = project.playableEntries.map { entry in
+            entry.isSong ? entry.name.components(separatedBy: .newlines).joined(separator: " ") : "----"
+        }.joined(separator: "\n")
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+    }
+
     func songDurationLabel(for section: ArrangementSection) -> String {
         ClockDurationFormatter.string(setlistDurations?.songSeconds[section.id])
     }

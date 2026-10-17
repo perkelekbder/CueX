@@ -28,7 +28,8 @@ struct OperatorView: View {
             OperatorKeyboardShortcuts(
                 isEnabled: model.project != nil && model.midiController.isReady
                     && editingSectionID == nil && model.errorMessage == nil && !model.isImporting,
-                onAction: handleKeyboardAction
+                onAction: handleKeyboardAction,
+                onCopySetlist: copySetlistAction
             )
         }
         .alert("CueX couldn’t complete the action", isPresented: errorPresented) {
@@ -400,6 +401,11 @@ struct OperatorView: View {
         case .nextSong:
             if let nextSection { selectedSectionID = nextSection.id }
         }
+    }
+
+    private var copySetlistAction: (() -> Void)? {
+        guard model.project != nil, editingSectionID == nil, !model.isImporting else { return nil }
+        return { model.copySetlist() }
     }
 
     private var errorPresented: Binding<Bool> {
