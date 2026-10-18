@@ -2,6 +2,16 @@
 
 CueX is a native macOS show-control app for Logic Pro playback projects.
 
+CueX treats Logic's Arrangement sections as songs rather than using markers. You can reorder your setlist in CueX without moving songs in Logic, or arrange your setlist directly in Logic for playback without CueX. You can also use Logic's Project Alternatives to create a version for each show and remove the Arrangement sections you don't need from that alternative.
+
+CueX only reads your Logic project file; it never writes to or modifies it.
+
+If you find a bug or have a feature request, please [open a GitHub issue](https://github.com/perkelekbder/CueX/issues).
+
+If you'd like to support me, check out my melodic metal band, IGNEA. If that's your kind of music, consider [becoming a patron](https://www.patreon.com/cw/helleignea)—you'll also get access to more than five years of backstage content.
+
+Remember, I'm only a cuck coder: I sit in a chair and watch my laptop write code.
+
 ## Current milestone
 
 - Single-window macOS app with a compact vertical operator window that opens on launch
