@@ -24,6 +24,7 @@ final class CueXModel {
     @ObservationIgnored private var reloadFailures = 0
     private var projectUnavailable = false
     private let notesStore = OperatorNotesStore()
+    let batteryPower = BatteryPowerMonitor()
     let midiController = LogicMIDIController()
     let playlistAutomation: PlaylistAutomation
 

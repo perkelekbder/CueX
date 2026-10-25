@@ -87,6 +87,11 @@ Other timecode start positions and frame rates are not yet supported; beyond bar
 The light at the bottom shows green for recent communication, amber while waiting or when Logic has been quiet, red for a connection problem, and gray when Logic is closed.
 Click it for details and connection instructions.
 
+## Battery warning
+
+A song-sized warning appears at the top while your Mac runs on battery, with a yellow icon normally and a red icon at 20% charge or below.
+It shows the remaining charge and disappears completely when external power is connected.
+
 ## Keyboard controls
 
 The **Playback** menu provides Reset (**Enter**, sends Stop twice), Stop (**0**), Start/Stop (**Space**, depending on playback state), Toggle Cycle (**C**), Previous (**,** or **↑**), and Next (**.** or **↓**).

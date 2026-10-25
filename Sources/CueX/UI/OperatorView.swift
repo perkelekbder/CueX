@@ -10,6 +10,10 @@ struct OperatorView: View {
         // Let the list absorb size changes while controls and footer stay pinned.
         GeometryReader { _ in
             VStack(spacing: 0) {
+                if model.batteryPower.isOnBattery {
+                    BatteryPowerWarning(monitor: model.batteryPower)
+                    panelDivider
+                }
                 fileControls
                 panelDivider
                 SetTimingHeader(model: model, fallbackSectionID: selectedSectionID)
